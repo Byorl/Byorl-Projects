@@ -20,23 +20,30 @@ A web-based control panel for managing multiple Roblox accounts with remote exec
 
 ## Installation
 
-1. Clone the repository:
+### Option 1: With Git
+
 ```bash
 git clone https://github.com/yourusername/byorl-control.git
 cd byorl-control
-```
-
-2. Install dependencies:
-```bash
 npm install
-```
-
-3. Start the server:
-```bash
 node index.js
 ```
 
-4. Open `http://localhost:5000` in your browser
+### Option 2: Without Git (Download ZIP)
+
+1. Click the green **"Code"** button at the top of this page
+2. Click **"Download ZIP"**
+3. Extract the ZIP file to a folder
+4. Open a terminal/command prompt in that folder
+5. Run:
+```bash
+npm install
+node index.js
+```
+
+### After Installation
+
+Open `http://localhost:5000` in your browser
 
 ## Usage
 
