@@ -1,7 +1,7 @@
 local SERVER_URL = "http://localhost:5000"
 local WS_URL = "ws://localhost:5001"
-local POLLING_RATE = 2
-local HEARTBEAT_RATE = 3
+local POLLING_RATE = 2 
+local HEARTBEAT_RATE = 3 
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -71,7 +71,7 @@ local function getPath(obj)
     end
     
     if #parts == 0 then
-        return "nil"
+        return "nil --[[" .. (obj.Name or "Unknown") .. "]]"
     end
     
     local result = table.concat(parts, "")
@@ -452,7 +452,7 @@ if useWebSocket then
     spawn(function()
         connectWebSocket()
     end)
-    task.wait(1)
+    task.wait(1) 
 end
 
 spawn(function()
