@@ -163,15 +163,49 @@
         @keyframes toastIn { from { opacity: 0; transform: translateX(100px); } to { opacity: 1; transform: translateX(0); } }
         @keyframes toastOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(100px); } }
         .toast.hiding { animation: toastOut 0.3s ease forwards; }
+
+        .script-item { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--border); padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+        .script-item:hover { border-color: #444; background: rgba(255,255,255,0.02); }
+        .script-item .script-name { flex: 1; font-size: 0.85rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .script-item .script-actions { display: flex; gap: 5px; opacity: 0; transition: opacity 0.2s; }
+        .script-item:hover .script-actions { opacity: 1; }
+        .script-item .script-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; font-size: 0.75rem; border-radius: 4px; }
+        .script-item .script-btn:hover { color: var(--text); background: rgba(255,255,255,0.1); }
+        .script-item .script-btn.delete:hover { color: var(--danger); }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 10000; display: flex; align-items: center; justify-content: center; animation: fadeIn 0.2s; }
+        .modal-box { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 25px; min-width: 350px; max-width: 450px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); animation: modalIn 0.2s; }
+        .modal-title { font-family: 'Space Grotesk', sans-serif; font-size: 1.2rem; font-weight: 600; margin-bottom: 15px; }
+        .modal-input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 12px 15px; border-radius: 8px; font-size: 0.95rem; margin-bottom: 20px; }
+        .modal-input:focus { border-color: var(--primary); outline: none; }
+        .modal-buttons { display: flex; gap: 10px; justify-content: flex-end; }
+        .modal-btn { padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.9rem; border: none; transition: 0.2s; }
+        .modal-btn.primary { background: var(--primary); color: white; }
+        .modal-btn.primary:hover { background: var(--primary-hover); }
+        .modal-btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--text-muted); }
+        .modal-btn.ghost:hover { border-color: var(--text); color: var(--text); }
+        .modal-btn.danger { background: var(--danger); color: white; }
+        .modal-btn.danger:hover { background: #dc2626; }
+        .modal-text { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px; line-height: 1.5; }
+        @keyframes modalIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+
+        .drag-handle { cursor: grab; padding: 8px; color: var(--text-muted); display: flex; align-items: center; user-select: none; }
+        .drag-handle:hover { color: var(--text); }
+        .drag-handle:active { cursor: grabbing; }
+        .drag-handle svg { width: 16px; height: 16px; }
+        .config-row.dragging { opacity: 0.5; transform: scale(1.02); box-shadow: 0 10px 40px rgba(139, 92, 246, 0.3); border-color: var(--primary); }
+        .config-row.drag-over { border-color: var(--primary); background: var(--primary-dim); }
+        .config-row { transition: transform 0.2s, opacity 0.2s, border-color 0.2s, background 0.2s; }
     </style>
 </head>
 <body>
     <div class="toast-container" id="toast-container"></div>
+    <div id="modal-container"></div>
 
     <div class="sidebar">
         <div class="brand">BYORL <span>CONTROL</span></div>
         <button class="nav-btn active" onclick="setTab('sessions', this)">Active Sessions</button>
-        <button class="nav-btn" onclick="setTab('rejoiner', this)">Auto Rejoiner</button>
+        <button class="nav-btn" onclick="setTab('rejoiner', this)">Account Manager</button>
         <button class="nav-btn" onclick="setTab('executor', this)">Executor</button>
         <button class="nav-btn" onclick="setTab('remotespy', this)">Remote Spy</button>
         <button class="nav-btn" onclick="setTab('settings', this)">Settings</button>
@@ -185,15 +219,18 @@
             <div id="grid" class="grid"></div>
         </div>
 
-        <!-- REJOINER -->
+        <!-- ACCOUNT MANAGER -->
         <div id="rejoiner" class="page">
-            <h2>Account Configuration</h2>
-            <div class="subtitle">Manage settings and cookies for auto-launching.</div>
+            <h2>Account Manager</h2>
+            <div class="subtitle">Manage accounts, cookies, and launch settings.</div>
+            
+            <!-- Cookie Login -->
             <div class="add-box">
-                <div class="input-group"><span class="input-label">Username</span><input id="new-user" type="text" placeholder="e.g. Byorlals"></div>
-                <div class="input-group"><span class="input-label">User ID</span><input id="new-id" type="text" placeholder="e.g. 9213180540"></div>
-                <button class="btn btn-primary" style="width: auto; height: 42px; margin-bottom:1px;" onclick="manualAdd()">Add Account</button>
+                <div class="input-group" style="flex: 1;"><span class="input-label">Roblox Cookie</span><input id="new-cookie" type="password" placeholder="Paste .ROBLOSECURITY cookie here..."></div>
+                <button class="btn btn-primary" style="width: auto; height: 42px; margin-bottom:1px;" id="add-account-btn" onclick="addAccountByCookie()">Add Account</button>
+                <button class="btn btn-ghost" style="width: auto; height: 42px; margin-bottom:1px;" onclick="openBrowserLogin()" title="Login via browser">🌐 Browser Login</button>
             </div>
+            
             <div id="config-list" class="config-list"></div>
         </div>
 
@@ -205,6 +242,10 @@
                 <div class="targets-panel">
                     <div class="panel-header"><div class="panel-title">Target Clients</div><button class="select-all-btn" onclick="toggleSelectAll('exec')">Select All</button></div>
                     <div class="targets-list" id="exec-target-list"><div class="empty-message">No clients</div></div>
+                    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border);">
+                        <div class="panel-header" style="margin-bottom: 10px;"><div class="panel-title">Script Library</div><button class="select-all-btn" onclick="saveCurrentScript()">+ Save</button></div>
+                        <div class="targets-list" id="script-library" style="max-height: 200px;"><div class="empty-message">No saved scripts</div></div>
+                    </div>
                 </div>
                 <div class="executor-main">
                     <div class="editor-section">
@@ -215,8 +256,8 @@
                         </div>
                         <div id="monaco-container"></div>
                         <div class="editor-footer">
-                            <button class="btn btn-ghost" style="width:auto;" onclick="execPerf()">⚡ Performance Mode</button>
-                            <button class="btn btn-primary" style="width:150px;" onclick="execScript()">Execute Script</button>
+                            <button class="btn btn-ghost" style="width:auto;" onclick="execEcoMode()">🌿 Eco Mode</button>
+                            <button class="btn btn-primary" style="width:auto; min-width:150px;" id="exec-btn" onclick="execScript()">Execute Script</button>
                         </div>
                     </div>
                     <div class="logs-section">
@@ -286,6 +327,52 @@
                     </label>
                 </div>
                 <button class="btn btn-primary" style="width: auto;" onclick="saveSettings()">Save Settings</button>
+            </div>
+
+            <div class="setting-box" style="margin-top: 25px;">
+                <div style="margin-bottom: 25px;">
+                    <label style="display:block; margin-bottom:10px; font-weight:600;">Auto RAM Trim</label>
+                    <div style="font-size: 0.85rem; color:#888; margin-bottom:15px;">Automatically trim Roblox memory usage to reduce RAM consumption. Useful for running multiple accounts.</div>
+                    <label class="toggle-label" style="margin-bottom: 15px;">
+                        <input type="checkbox" id="autotrim-toggle">
+                        <div>
+                            <span style="font-weight:600;">Enable Auto Trim</span>
+                            <div style="font-size: 0.8rem; color:#888; margin-top:5px;">Periodically sends memory cleanup commands to connected clients.</div>
+                        </div>
+                    </label>
+                    <div style="margin-bottom: 15px;">
+                        <span class="input-label">Target RAM Usage: <span id="trim-target-display">750</span> MB</span>
+                        <input type="range" id="autotrim-target" min="256" max="2048" step="64" value="750" style="width:100%; accent-color: var(--primary); margin-top: 8px;" oninput="document.getElementById('trim-target-display').textContent = this.value">
+                        <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:#555; margin-top:4px;">
+                            <span>256 MB (Aggressive)</span>
+                            <span>2048 MB (Light)</span>
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <span class="input-label">Trim Interval (seconds)</span>
+                        <input type="number" id="autotrim-interval" value="60" min="10" max="300" placeholder="60" style="margin-top: 8px;">
+                        <div style="font-size:0.75rem; color:#555; margin-top:4px;">How often to check and trim RAM (10-300 seconds)</div>
+                    </div>
+                    <button class="btn btn-ghost" style="width: auto;" onclick="triggerManualTrim()">🧹 Trim Now (All Clients)</button>
+                </div>
+            </div>
+
+            <div class="setting-box" style="margin-top: 25px;">
+                <div style="margin-bottom: 20px;">
+                    <label style="display:block; margin-bottom:10px; font-weight:600;">Run on Windows Startup</label>
+                    <div style="font-size: 0.85rem; color:#888; margin-bottom:15px;">Automatically launch Byorl Control when Windows starts. Set the full path to your index.js file.</div>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                        <div id="startup-status" style="padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 600;"></div>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <span class="input-label">Script Path (full path to index.js)</span>
+                        <input type="text" id="startup-path" placeholder="C:\Users\YourName\Projects\byorl\index.js" style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-primary" style="width: auto;" id="startup-add-btn" onclick="addToStartup()">Add to Startup</button>
+                        <button class="btn btn-danger" style="width: auto;" id="startup-remove-btn" onclick="removeFromStartup()">Remove from Startup</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -415,12 +502,19 @@
             renderConfig();
         });
 
-        socket.on('updateConfig', (data) => { savedAccounts = data; renderConfig(); });
+        socket.on('updateConfig', function(data) { 
+            savedAccounts = data; 
+            Object.keys(data).forEach(function(id) {
+                if (accountOrder.indexOf(id) === -1) accountOrder.push(id);
+            });
+            accountOrder = accountOrder.filter(function(id) { return data[id]; });
+            renderConfig(); 
+        });
         
         socket.on('newLog', (logData) => {
             logs.push(logData);
             if(logs.length > 500) logs.shift();
-            renderLogs();
+            appendLog(logData);
         });
 
         socket.on('spyUpdate', (data) => {
@@ -467,31 +561,46 @@
         socket.on('settingsUpdated', (settings) => {
             document.getElementById('timeout').value = settings.disconnectTimeout;
             document.getElementById('remotespy-toggle').checked = settings.spyEnabled;
+            document.getElementById('autotrim-toggle').checked = settings.autoTrimEnabled || false;
+            document.getElementById('autotrim-target').value = settings.autoTrimTargetMB || 750;
+            document.getElementById('trim-target-display').textContent = settings.autoTrimTargetMB || 750;
+            document.getElementById('autotrim-interval').value = settings.autoTrimIntervalSeconds || 60;
         });
 
-        function clearLogs() { logs = []; renderLogs(); }
-
-        function renderLogs() {
-            const container = document.getElementById('console-output');
+        function clearLogs() { logs = []; document.getElementById('console-output').innerHTML = ''; }
+        
+        function shouldShowLog(l) {
             const showInfo = document.getElementById('chk-info').checked;
             const showWarn = document.getElementById('chk-warn').checked;
             const showError = document.getElementById('chk-error').checked;
-            
             const selectedIds = execTargets;
             
-            container.innerHTML = logs.filter(l => {
-                if(selectedIds.length > 0 && !selectedIds.includes(l.userId.toString())) return false;
-                if(l.type === 'info' && !showInfo) return false;
-                if(l.type === 'warn' && !showWarn) return false;
-                if(l.type === 'error' && !showError) return false;
-                return true;
-            }).map(l => {
-                const typeClass = l.type === 'warn' ? 'log-warn' : (l.type === 'error' ? 'log-error' : 'log-info');
-                const client = activeClients.find(c => c.userId == l.userId);
-                const name = client ? client.username : l.userId;
-                return `<div class="log-entry"><div class="log-time">[${l.timestamp}]</div><div class="log-user">${name}</div><div class="${typeClass}">${escapeHtml(l.msg)}</div></div>`;
-            }).join('');
-            
+            if(selectedIds.length > 0 && !selectedIds.includes(l.userId.toString())) return false;
+            if(l.type === 'info' && !showInfo) return false;
+            if(l.type === 'warn' && !showWarn) return false;
+            if(l.type === 'error' && !showError) return false;
+            return true;
+        }
+        
+        function createLogEntry(l) {
+            const typeClass = l.type === 'warn' ? 'log-warn' : (l.type === 'error' ? 'log-error' : 'log-info');
+            const client = activeClients.find(c => c.userId == l.userId);
+            const name = client ? client.username : l.userId;
+            return `<div class="log-entry"><div class="log-time">[${l.timestamp}]</div><div class="log-user">${name}</div><div class="${typeClass}">${escapeHtml(l.msg)}</div></div>`;
+        }
+        
+        function appendLog(logData) {
+            if (!shouldShowLog(logData)) return;
+            const container = document.getElementById('console-output');
+            const entry = document.createElement('div');
+            entry.innerHTML = createLogEntry(logData);
+            container.appendChild(entry.firstChild);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function renderLogs() {
+            const container = document.getElementById('console-output');
+            container.innerHTML = logs.filter(shouldShowLog).map(createLogEntry).join('');
             container.scrollTop = container.scrollHeight;
         }
 
@@ -507,11 +616,16 @@
             Array.from(grid.children).forEach(el => { if(!ids.includes(el.id.replace('c-',''))) el.remove() });
             clients.forEach(c => {
                 let card = document.getElementById(`c-${c.userId}`);
+                const pingMs = Math.round((c.ping || 0) * 1000);
+                const ramMb = Math.round(c.ram || 0);
+                
                 if(!card) {
                     card = document.createElement('div'); card.className = 'card'; card.id = `c-${c.userId}`;
-                    card.innerHTML = `<div class="status-dot" id="s-${c.userId}"></div><img src="${getAvatar(c.userId)}" class="avatar"><div style="font-weight:bold; font-size:1.1rem; margin-bottom:5px;">${c.username}</div><div style="color:#666; font-size:0.8rem; margin-bottom:20px; font-family:'Space Grotesk'">ID: ${c.userId}</div><button class="btn btn-danger" onclick="kill('${c.userId}')">Terminate</button>`;
                     grid.appendChild(card);
                 }
+                
+                card.innerHTML = `<div class="status-dot" id="s-${c.userId}"></div><img src="${getAvatar(c.userId)}" class="avatar"><div style="font-weight:bold; font-size:1.1rem; margin-bottom:5px;">${c.username}</div><div style="color:#666; font-size:0.8rem; margin-bottom:10px; font-family:'Space Grotesk'">ID: ${c.userId}</div><div style="display:flex; gap:15px; margin-bottom:15px; font-size:0.8rem;"><div style="text-align:center;"><div style="color:var(--primary); font-weight:600;">${pingMs}ms</div><div style="color:#555; font-size:0.7rem;">PING</div></div><div style="text-align:center;"><div style="color:var(--success); font-weight:600;">${ramMb}MB</div><div style="color:#555; font-size:0.7rem;">RAM</div></div></div><button class="btn btn-danger" onclick="kill('${c.userId}')">Terminate</button>`;
+                
                 const statusEl = document.getElementById(`s-${c.userId}`);
                 statusEl.className = `status-dot ${c.status === 'unstable' ? 'status-warn' : 'status-good'}`;
                 statusEl.innerText = c.status === 'unstable' ? 'UNSTABLE' : 'ONLINE';
@@ -525,15 +639,110 @@
             return { status: 'online', class: 'status-good', text: 'ONLINE' };
         }
 
+        var accountOrder = [];
+        
         function renderConfig() {
             const list = document.getElementById('config-list');
             list.innerHTML = "";
-            for(const [uid, d] of Object.entries(savedAccounts)) {
+            
+            const orderedIds = accountOrder.length > 0 ? accountOrder : Object.keys(savedAccounts);
+            
+            orderedIds.forEach(function(uid) {
+                const d = savedAccounts[uid];
+                if (!d) return;
+                
                 const status = getAccountStatus(uid);
-                const row = document.createElement('div'); row.className = 'config-row';
-                row.innerHTML = `<div class="row-header"><img src="${getAvatar(uid)}" style="width:40px; height:40px; border-radius:50%;"><div style="flex:1;"><div style="font-weight:700;">${d.username}</div><div style="font-size:0.75rem; color:#666;">${uid}</div></div><div class="status-dot ${status.class}" style="position:relative;top:0;right:0;">${status.text}</div><label class="toggle-label"><input type="checkbox" ${d.autoRelaunch?'checked':''} onchange="upd('${uid}','autoRelaunch',this.checked)"><span style="font-weight:600; font-size:0.9rem;">Auto-Relaunch</span></label></div><div class="row-body"><div><span class="input-label">Place ID</span><input value="${d.placeId}" onchange="upd('${uid}','placeId',this.value)"></div><div><span class="input-label">Job ID</span><input value="${d.jobId}" onchange="upd('${uid}','jobId',this.value)"></div><div class="row-full"><span class="input-label">Cookie</span><input type="password" value="${d.cookie||''}" onchange="upd('${uid}','cookie',this.value)"></div></div>`;
+                const row = document.createElement('div'); 
+                row.className = 'config-row';
+                row.setAttribute('data-uid', uid);
+                row.draggable = true;
+                
+                const dragIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
+                
+                row.innerHTML = '<div class="row-header"><div class="drag-handle">' + dragIcon + '</div><img src="' + getAvatar(uid) + '" style="width:40px; height:40px; border-radius:50%;"><div style="flex:1;"><div style="font-weight:700;">' + (d.username || 'Unknown') + '</div><div style="font-size:0.75rem; color:#666;">' + uid + '</div></div><div class="status-dot ' + status.class + '" style="position:relative;top:0;right:0;">' + status.text + '</div><label class="toggle-label"><input type="checkbox" ' + (d.autoRelaunch?'checked':'') + ' onchange="upd(\'' + uid + '\',\'autoRelaunch\',this.checked)"><span style="font-weight:600; font-size:0.9rem;">Auto-Relaunch</span></label><button class="btn btn-primary" style="width:auto; padding:8px 12px; font-size:0.8rem;" onclick="joinGame(\'' + uid + '\')" title="Launch Roblox with configured Place/Job ID">🎮 Join Game</button><button class="btn btn-danger" style="width:auto; padding:8px 12px; font-size:0.8rem;" onclick="deleteAccount(\'' + uid + '\')">Remove</button></div><div class="row-body"><div><span class="input-label">Place ID</span><input value="' + d.placeId + '" onchange="upd(\'' + uid + '\',\'placeId\',this.value)"></div><div><span class="input-label">Job ID (optional)</span><input value="' + d.jobId + '" onchange="upd(\'' + uid + '\',\'jobId\',this.value)" placeholder="Leave empty for random server"></div><div class="row-full"><span class="input-label">Cookie</span><input type="password" value="' + (d.cookie||'') + '" onchange="upd(\'' + uid + '\',\'cookie\',this.value)"></div></div>';
+                
+                row.ondragstart = function(e) { handleDragStart(e, row); };
+                row.ondragend = function(e) { handleDragEnd(e, row); };
+                row.ondragover = function(e) { handleDragOver(e, row); };
+                row.ondragleave = function(e) { handleDragLeave(e, row); };
+                row.ondrop = function(e) { handleDrop(e, row); };
+                
                 list.appendChild(row);
+            });
+        }
+        
+        var draggedElement = null;
+        
+        function handleDragStart(e, row) {
+            draggedElement = row;
+            row.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', row.getAttribute('data-uid'));
+        }
+        
+        function handleDragEnd(e, row) {
+            row.classList.remove('dragging');
+            document.querySelectorAll('.config-row').forEach(function(r) {
+                r.classList.remove('drag-over');
+            });
+            draggedElement = null;
+        }
+        
+        function handleDragOver(e, row) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (row !== draggedElement) {
+                row.classList.add('drag-over');
             }
+        }
+        
+        function handleDragLeave(e, row) {
+            row.classList.remove('drag-over');
+        }
+        
+        function handleDrop(e, row) {
+            e.preventDefault();
+            row.classList.remove('drag-over');
+            
+            if (!draggedElement || row === draggedElement) return;
+            
+            const draggedUid = draggedElement.getAttribute('data-uid');
+            const targetUid = row.getAttribute('data-uid');
+            
+            const draggedIdx = accountOrder.indexOf(draggedUid);
+            const targetIdx = accountOrder.indexOf(targetUid);
+            
+            if (draggedIdx > -1 && targetIdx > -1) {
+                accountOrder.splice(draggedIdx, 1);
+                accountOrder.splice(targetIdx, 0, draggedUid);
+                
+                fetch('/save-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order: accountOrder })
+                });
+                
+                renderConfig();
+            }
+        }
+        
+        function deleteAccount(userId) {
+            var account = savedAccounts[userId];
+            var name = account ? (account.username || userId) : userId;
+            showModal({
+                title: 'Remove Account',
+                message: 'Are you sure you want to remove "' + name + '" from the account list?',
+                confirmText: 'Remove',
+                confirmClass: 'danger',
+                onConfirm: function() {
+                    fetch('/delete-account/' + userId, { method: 'DELETE' })
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            if (data.error) return showToast(data.error, "error");
+                            showToast("Account removed", "success");
+                        });
+                }
+            });
         }
 
         function renderTargets(type, clients) {
@@ -561,29 +770,271 @@
             });
         }
 
+        function updateExecButton() {
+            const btn = document.getElementById('exec-btn');
+            if (execTargets.length > 0) {
+                btn.textContent = `Execute Script (${execTargets.length})`;
+            } else {
+                btn.textContent = 'Execute Script';
+            }
+        }
+
         function toggleTarget(type, id) {
             if(execTargets.includes(id)) execTargets = execTargets.filter(t => t !== id); 
             else execTargets.push(id);
             renderTargets(type, activeClients);
             renderLogs();
+            updateExecButton();
         }
 
         function toggleSelectAll(type) {
             execTargets = execTargets.length === activeClients.length ? [] : activeClients.map(c => c.userId.toString());
             renderTargets(type, activeClients);
             renderLogs();
+            updateExecButton();
         }
 
         function insertTemplate() { if(editor) editor.setValue(`local Players = game:GetService("Players")\nlocal me = Players.LocalPlayer\n\nprint("Hello from " .. me.Name)`); }
         function execScript() { if(!editor) return; const script = editor.getValue(); if(execTargets.length === 0) return showToast("Select at least one client!", "error"); fetch('/execute', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({targets:execTargets, script})}); showToast("Script sent!", "success"); }
-        function execPerf() { if(editor) editor.setValue(`game:GetService("RunService"):Set3dRenderingEnabled(false)\nsetfpscap(10)`); execScript(); }
-        function manualAdd() { const username = document.getElementById('new-user').value; const userId = document.getElementById('new-id').value; if(!username || !userId) return; fetch('/add-account', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId, username})}); document.getElementById('new-user').value=''; document.getElementById('new-id').value=''; }
+        
+        function execEcoMode() { 
+            if(!editor) return;
+            if(execTargets.length === 0) return showToast("Select at least one client!", "error");
+            const ecoScript = `-- Eco Mode: Reduces CPU/GPU usage for multi-account setups
+game:GetService("RunService"):Set3dRenderingEnabled(false)
+if setfpscap then setfpscap(5) end
+settings().Rendering.QualityLevel = 1
+print(":: ECO MODE ENABLED ::")`;
+            fetch('/execute', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({targets:execTargets, script:ecoScript})});
+            showToast("Eco Mode enabled on " + execTargets.length + " client(s)", "success");
+        }
+        
+        function showModal(options) {
+            var container = document.getElementById('modal-container');
+            var title = options.title || 'Confirm';
+            var message = options.message || '';
+            var input = options.input || '';
+            var inputValue = options.inputValue || '';
+            var confirmText = options.confirmText || 'Confirm';
+            var cancelText = options.cancelText || 'Cancel';
+            var confirmClass = options.confirmClass || 'primary';
+            
+            var html = '<div class="modal-overlay" id="modal-overlay">' +
+                '<div class="modal-box">' +
+                '<div class="modal-title">' + title + '</div>' +
+                (message ? '<div class="modal-text">' + message + '</div>' : '') +
+                (input ? '<input type="text" class="modal-input" id="modal-input" placeholder="' + input + '" value="' + inputValue + '">' : '') +
+                '<div class="modal-buttons">' +
+                '<button class="modal-btn ghost" id="modal-cancel">' + cancelText + '</button>' +
+                '<button class="modal-btn ' + confirmClass + '" id="modal-confirm">' + confirmText + '</button>' +
+                '</div></div></div>';
+            
+            container.innerHTML = html;
+            
+            var overlay = document.getElementById('modal-overlay');
+            var confirmBtn = document.getElementById('modal-confirm');
+            var cancelBtn = document.getElementById('modal-cancel');
+            var inputEl = document.getElementById('modal-input');
+            
+            overlay.onclick = function(e) { if(e.target === overlay) closeModal(); };
+            cancelBtn.onclick = function() { closeModal(); };
+            
+            confirmBtn.onclick = function() {
+                var value = inputEl ? inputEl.value.trim() : true;
+                closeModal();
+                if (options.onConfirm) options.onConfirm(value);
+            };
+            
+            if (inputEl) {
+                inputEl.focus();
+                inputEl.onkeydown = function(e) {
+                    if (e.key === 'Enter') confirmBtn.click();
+                    if (e.key === 'Escape') closeModal();
+                };
+            }
+        }
+        
+        function closeModal() {
+            document.getElementById('modal-container').innerHTML = '';
+        }
+        
+        let scriptLibrary = {};
+        
+        function renderScriptLibrary() {
+            const container = document.getElementById('script-library');
+            const scripts = Object.entries(scriptLibrary);
+            
+            if (scripts.length === 0) {
+                container.innerHTML = '<div class="empty-message">No saved scripts</div>';
+                return;
+            }
+            
+            container.innerHTML = scripts.map(([id, s]) => `
+                <div class="script-item" onclick="loadScript('${id}')">
+                    <span class="script-name">${escapeHtml(s.name)}</span>
+                    <div class="script-actions">
+                        <button class="script-btn" onclick="event.stopPropagation(); runScript('${id}')" title="Run">▶</button>
+                        <button class="script-btn delete" onclick="event.stopPropagation(); deleteScript('${id}')" title="Delete">✕</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function saveCurrentScript() {
+            if (!editor) return;
+            const code = editor.getValue().trim();
+            if (!code) return showToast("Editor is empty!", "error");
+            
+            showModal({
+                title: 'Save Script',
+                input: 'Enter script name...',
+                confirmText: 'Save',
+                onConfirm: function(name) {
+                    if (!name) return showToast("Name is required!", "error");
+                    fetch('/scripts/save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: name, code: code })
+                    }).then(function(r) { return r.json(); }).then(function(data) {
+                        if (data.error) return showToast(data.error, "error");
+                        showToast("Script saved!", "success");
+                    });
+                }
+            });
+        }
+        
+        function loadScript(id) {
+            if (!editor || !scriptLibrary[id]) return;
+            editor.setValue(scriptLibrary[id].code);
+            showToast("Loaded: " + scriptLibrary[id].name, "info");
+        }
+        
+        function runScript(id) {
+            if (!scriptLibrary[id]) return;
+            if (execTargets.length === 0) return showToast("Select at least one client!", "error");
+            fetch('/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ targets: execTargets, script: scriptLibrary[id].code })
+            });
+            showToast("Running: " + scriptLibrary[id].name, "success");
+        }
+        
+        function deleteScript(id) {
+            var scriptName = scriptLibrary[id] ? scriptLibrary[id].name : 'this script';
+            showModal({
+                title: 'Delete Script',
+                message: 'Are you sure you want to delete "' + scriptName + '"?',
+                confirmText: 'Delete',
+                confirmClass: 'danger',
+                onConfirm: function() {
+                    fetch('/scripts/' + id, { method: 'DELETE' }).then(function(r) { return r.json(); }).then(function(data) {
+                        if (data.error) return showToast(data.error, "error");
+                        showToast("Script deleted", "success");
+                    });
+                }
+            });
+        }
+        
+        socket.on('scriptsUpdated', function(scripts) {
+            scriptLibrary = scripts;
+            renderScriptLibrary();
+        });
+        function setLoginTab(tab) {
+            document.getElementById('tab-cookie').classList.toggle('active', tab === 'cookie');
+            document.getElementById('tab-credentials').classList.toggle('active', tab === 'credentials');
+            document.getElementById('login-cookie').style.display = tab === 'cookie' ? 'flex' : 'none';
+            document.getElementById('login-credentials').style.display = tab === 'credentials' ? 'flex' : 'none';
+            document.getElementById('login-2fa').style.display = 'none';
+        }
+        
+        var pending2FASession = null;
+        
+        function addAccountByCookie() {
+            var cookieInput = document.getElementById('new-cookie');
+            var btn = document.getElementById('add-account-btn');
+            var cookie = cookieInput.value.trim();
+            
+            if (!cookie) return showToast("Please paste a cookie!", "error");
+            
+            btn.disabled = true;
+            btn.textContent = 'Adding...';
+            
+            fetch('/add-account', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cookie: cookie })
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                btn.disabled = false;
+                btn.textContent = 'Add Account';
+                
+                if (data.error) {
+                    showToast(data.error, "error");
+                } else {
+                    showToast("Added: " + data.username, "success");
+                    cookieInput.value = '';
+                }
+            }).catch(function() {
+                btn.disabled = false;
+                btn.textContent = 'Add Account';
+                showToast("Failed to add account", "error");
+            });
+        }
+        
+        function openBrowserLogin() {
+            var loginWindow = window.open('https://www.roblox.com/login', 'RobloxLogin', 'width=500,height=700');
+            
+            showToast("Login in the popup window, then copy your cookie from DevTools (F12 > Application > Cookies > .ROBLOSECURITY)", "info");
+            
+            showModal({
+                title: 'Browser Login Instructions',
+                message: '1. Login to Roblox in the popup window<br>2. After logging in, press F12 to open DevTools<br>3. Go to Application > Cookies > roblox.com<br>4. Find .ROBLOSECURITY and copy its value<br>5. Paste it in the cookie field here',
+                confirmText: 'Got it'
+            });
+        }
         function kill(userId) { fetch('/terminate', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId})}); }
         function upd(userId, key, value) { savedAccounts[userId][key]=value; fetch('/update-account', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId,config:{[key]:value}})}); }
         function saveSettings() { 
             const timeout = document.getElementById('timeout').value; 
             const spyEnabled = document.getElementById('remotespy-toggle').checked;
-            fetch('/settings', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({disconnectTimeout: parseInt(timeout), spyEnabled})}).then(()=>showToast("Settings saved!", "success")); 
+            const autoTrimEnabled = document.getElementById('autotrim-toggle').checked;
+            const autoTrimTargetMB = parseInt(document.getElementById('autotrim-target').value);
+            const autoTrimIntervalSeconds = parseInt(document.getElementById('autotrim-interval').value) || 60;
+            fetch('/settings', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+                disconnectTimeout: parseInt(timeout), 
+                spyEnabled,
+                autoTrimEnabled,
+                autoTrimTargetMB,
+                autoTrimIntervalSeconds
+            })}).then(()=>showToast("Settings saved!", "success")); 
+        }
+        
+        function joinGame(userId) {
+            const account = savedAccounts[userId];
+            if (!account) return showToast("Account not found", "error");
+            if (!account.placeId) return showToast("Please set a Place ID first", "error");
+            
+            fetch('/launch-game', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId })
+            }).then(r => r.json()).then(data => {
+                if (data.error) return showToast(data.error, "error");
+                showToast("Launching Roblox for " + (account.username || userId), "success");
+            }).catch(() => showToast("Failed to launch game", "error"));
+        }
+        
+        function triggerManualTrim() {
+            if (activeClients.length === 0) return showToast("No clients connected", "error");
+            const targetMB = parseInt(document.getElementById('autotrim-target').value) || 750;
+            fetch('/trim-ram', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ targetMB })
+            }).then(r => r.json()).then(data => {
+                if (data.error) return showToast(data.error, "error");
+                showToast("RAM trim sent to " + data.clientCount + " client(s)", "success");
+            }).catch(() => showToast("Failed to send trim command", "error"));
         }
 
         function renderSpyClients(clients) {
@@ -792,14 +1243,26 @@
             }
         }
 
-        function showToast(message, type = 'info', duration = 3000) {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            toast.className = `toast ${type}`;
-            const icons = { success: '✓', error: '✕', info: 'ℹ' };
-            toast.innerHTML = `<span class="toast-icon">${icons[type] || icons.info}</span><span class="toast-message">${message}</span><button class="toast-close" onclick="this.parentElement.remove()">×</button>`;
+        function showToast(message, type, duration) {
+            type = type || 'info';
+            duration = duration || 3000;
+            var container = document.getElementById('toast-container');
+            
+            var toasts = container.querySelectorAll('.toast');
+            while (toasts.length >= 3) {
+                toasts[0].remove();
+                toasts = container.querySelectorAll('.toast');
+            }
+            
+            var toast = document.createElement('div');
+            toast.className = 'toast ' + type;
+            var icons = { success: '✓', error: '✕', info: 'ℹ' };
+            toast.innerHTML = '<span class="toast-icon">' + (icons[type] || icons.info) + '</span><span class="toast-message">' + message + '</span><button class="toast-close" onclick="this.parentElement.remove()">×</button>';
             container.appendChild(toast);
-            setTimeout(() => { toast.classList.add('hiding'); setTimeout(() => toast.remove(), 300); }, duration);
+            setTimeout(function() { 
+                toast.classList.add('hiding'); 
+                setTimeout(function() { toast.remove(); }, 300); 
+            }, duration);
         }
 
         function clearRemoteSpy() {
@@ -810,8 +1273,85 @@
         fetch('/settings').then(r=>r.json()).then(d => {
             document.getElementById('timeout').value = d.disconnectTimeout;
             document.getElementById('remotespy-toggle').checked = d.spyEnabled || false;
+            document.getElementById('autotrim-toggle').checked = d.autoTrimEnabled || false;
+            document.getElementById('autotrim-target').value = d.autoTrimTargetMB || 750;
+            document.getElementById('trim-target-display').textContent = d.autoTrimTargetMB || 750;
+            document.getElementById('autotrim-interval').value = d.autoTrimIntervalSeconds || 60;
+            if (d.scriptPath) document.getElementById('startup-path').value = d.scriptPath;
         });
-        fetch('/get-config').then(r=>r.json()).then(d => { savedAccounts = d; renderConfig(); });
+        fetch('/get-config').then(r=>r.json()).then(function(d) { 
+            savedAccounts = d.accounts || d; 
+            accountOrder = d.order || Object.keys(savedAccounts);
+            renderConfig(); 
+        });
+        fetch('/scripts').then(r=>r.json()).then(d => { scriptLibrary = d; renderScriptLibrary(); });
+
+        function updateStartupStatus() {
+            fetch('/startup/status').then(r => r.json()).then(data => {
+                const statusEl = document.getElementById('startup-status');
+                const addBtn = document.getElementById('startup-add-btn');
+                const removeBtn = document.getElementById('startup-remove-btn');
+                const pathInput = document.getElementById('startup-path');
+                
+                if (data.enabled) {
+                    statusEl.textContent = 'ENABLED';
+                    statusEl.style.background = 'rgba(16, 185, 129, 0.15)';
+                    statusEl.style.color = 'var(--success)';
+                    addBtn.disabled = true;
+                    addBtn.style.opacity = '0.5';
+                    removeBtn.disabled = false;
+                    removeBtn.style.opacity = '1';
+                } else {
+                    statusEl.textContent = 'DISABLED';
+                    statusEl.style.background = 'rgba(113, 113, 122, 0.15)';
+                    statusEl.style.color = '#71717a';
+                    addBtn.disabled = false;
+                    addBtn.style.opacity = '1';
+                    removeBtn.disabled = true;
+                    removeBtn.style.opacity = '0.5';
+                }
+                
+                if (data.scriptPath) {
+                    pathInput.value = data.scriptPath;
+                }
+            });
+        }
+
+        function addToStartup() {
+            const scriptPath = document.getElementById('startup-path').value.trim();
+            if (!scriptPath) {
+                showToast('Please enter the full path to your index.js file', 'error');
+                return;
+            }
+            
+            fetch('/startup/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scriptPath })
+            }).then(r => r.json()).then(data => {
+                if (data.error) {
+                    showToast(data.error, 'error');
+                } else {
+                    showToast(data.message, 'success');
+                    updateStartupStatus();
+                }
+            }).catch(() => showToast('Failed to add to startup', 'error'));
+        }
+
+        function removeFromStartup() {
+            fetch('/startup/remove', { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        showToast(data.error, 'error');
+                    } else {
+                        showToast(data.message, 'success');
+                        updateStartupStatus();
+                    }
+                }).catch(() => showToast('Failed to remove from startup', 'error'));
+        }
+
+        updateStartupStatus();
     </script>
 </body>
 </html>
