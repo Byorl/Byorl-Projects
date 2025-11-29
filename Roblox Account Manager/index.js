@@ -1,1803 +1,1105 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Byorl Control</title>
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg: #09090b; --sidebar: #101013; --card: #18181b; --border: #27272a;
-            --primary: #8b5cf6; --primary-hover: #7c3aed; --primary-dim: rgba(139, 92, 246, 0.1);
-            --danger: #ef4444; --success: #10b981; --warn: #f59e0b; --info: #3b82f6;
-            --text: #f4f4f5; --text-muted: #a1a1aa;
-        }
-        * { box-sizing: border-box; outline: none; }
-        body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; margin: 0; display: flex; height: 100vh; overflow: hidden; }
-        
-        .sidebar { width: 280px; background: var(--sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 24px; }
-        .brand { font-family: 'Space Grotesk', sans-serif; font-size: 1.5rem; font-weight: 700; color: var(--primary); margin-bottom: 40px; }
-        .brand span { color: white; }
-        .nav-btn { background: transparent; border: none; color: var(--text-muted); text-align: left; padding: 14px; font-weight: 500; cursor: pointer; border-radius: 8px; margin-bottom: 4px; transition: 0.2s; font-size: 0.95rem; }
-        .nav-btn:hover { background: rgba(255,255,255,0.03); color: var(--text); }
-        .nav-btn.active { background: var(--primary-dim); color: var(--primary); font-weight: 600; }
-        
-        .content { flex: 1; padding: 40px; overflow-y: auto; }
-        .page { display: none; height: 100%; }
-        .page.active { display: block; animation: fadeIn 0.3s; }
-        @keyframes fadeIn { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:translateY(0)} }
-        
-        h2 { font-family: 'Space Grotesk', sans-serif; margin: 0 0 10px 0; font-size: 1.8rem; }
-        .subtitle { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 30px; }
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const WebSocket = require('ws');
+const fs = require('fs');
+const path = require('path');
+const { exec } = require('child_process');
+const fetch = require('node-fetch');
 
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 24px; }
-        .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; align-items: center; position: relative; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
-        
-        .avatar { width: 80px; height: 80px; border-radius: 50%; border: 3px solid var(--card); background: #000; margin-bottom: 15px; box-shadow: 0 0 0 2px var(--primary); }
-        .status-dot { position: absolute; top: 20px; right: 20px; padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
-        .status-good { background: rgba(16, 185, 129, 0.15); color: var(--success); }
-        .status-warn { background: rgba(245, 158, 11, 0.15); color: var(--warn); }
-        .status-offline { background: rgba(113, 113, 122, 0.15); color: #71717a; }
-        
-        .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 0.9rem; }
-        .btn-primary { background: var(--primary); color: white; } .btn-primary:hover { background: var(--primary-hover); }
-        .btn-danger { background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); } .btn-danger:hover { background: var(--danger); color: white; }
-        .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text-muted); } .btn-ghost:hover { border-color: var(--text); color: var(--text); }
-        .add-box { background: var(--card); padding: 20px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 30px; display: flex; gap: 15px; align-items: flex-end; }
-        .input-group { flex: 1; }
-        .input-label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; }
-        input { background: #09090b; border: 1px solid var(--border); color: white; padding: 12px; border-radius: 8px; font-family: 'Space Grotesk', monospace; width: 100%; transition: 0.2s; }
-        input:focus { border-color: var(--primary); }
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server);
 
-        .config-list { display: flex; flex-direction: column; gap: 15px; }
-        .config-row { background: var(--card); border: 1px solid var(--border); padding: 25px; border-radius: 12px; display: flex; flex-direction: column; gap: 20px; }
-        .row-header { display: flex; align-items: center; gap: 15px; border-bottom: 1px solid #222; padding-bottom: 15px; }
-        .row-body { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .row-full { grid-column: span 2; }
-        .toggle-label { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
-        .toggle-label input { width: 20px; height: 20px; accent-color: var(--primary); margin: 0; cursor: pointer; }
+const wss = new WebSocket.Server({ port: 5001 });
+const wsClients = new Map();
 
-        .panel-layout { display: flex; height: calc(100% - 80px); gap: 25px; }
-        .targets-panel { width: 280px; display: flex; flex-direction: column; gap: 15px; }
-        .panel-header { display: flex; justify-content: space-between; align-items: center; }
-        .panel-title { font-weight: 600; font-size: 0.95rem; color: var(--text); }
-        .select-all-btn { font-size: 0.75rem; color: var(--primary); background: transparent; border: none; cursor: pointer; font-weight: 600; }
-        .targets-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 5px; }
-        .empty-message { text-align:center; color:#555; margin-top:20px; font-size:0.8rem; width: 100%; }
+console.log('WebSocket server running on ws://localhost:5001');
 
-        .player-pill { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border); padding: 10px; border-radius: 10px; cursor: pointer; transition: all 0.2s ease; user-select: none; z-index: 2; }
-        .player-pill:hover { border-color: #444; transform: translateX(2px); }
-        .player-pill.selected { border-color: var(--primary); background: var(--primary-dim); box-shadow: 0 0 15px rgba(139, 92, 246, 0.1); }
-        .pill-avatar { width: 35px; height: 35px; border-radius: 50%; background: #000; }
-        .pill-info { display: flex; flex-direction: column; }
-        .pill-name { font-weight: 600; font-size: 0.9rem; }
-        .pill-id { font-size: 0.7rem; color: var(--text-muted); font-family: 'Space Grotesk'; }
-
-        .main-panel { flex: 1; display: flex; flex-direction: column; gap: 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #050505; }
-        .panel-toolbar { background: #0f0f11; padding: 10px 20px; border-bottom: 1px solid var(--border); display: flex; gap: 15px; align-items: center; }
-        .tool-btn { font-size: 0.8rem; color: var(--text-muted); cursor: pointer; }
-        .tool-btn:hover { color: white; }
-        #monaco-container { width: 100%; flex: 1; letter-spacing: 0 !important; }
-        .editor-footer { padding: 15px; background: #0f0f11; border-top: 1px solid var(--border); display: flex; gap: 15px; justify-content: flex-end; }
-
-        .console-output { flex: 1; overflow-y: auto; padding: 15px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; display: flex; flex-direction: column; gap: 5px; max-height: 200px; }
-        .log-entry { display: flex; gap: 10px; padding: 4px 8px; border-radius: 4px; }
-        .log-entry:hover { background: rgba(255,255,255,0.03); }
-        .log-time { color: #555; user-select: none; }
-        .log-user { color: var(--primary); font-weight: bold; width: 100px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-        .log-info { color: #e1e1e6; }
-        .log-warn { color: var(--warn); }
-        .log-error { color: var(--danger); }
-        
-        .filter-group { display: flex; gap: 15px; margin-left: auto; }
-        .filter-chk { display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.8rem; user-select: none; }
-        .filter-chk input { width: 14px; height: 14px; margin: 0; accent-color: var(--primary); }
-
-        .setting-box { background: var(--card); padding: 30px; border-radius: 12px; border: 1px solid var(--border); max-width: 600px; }
-
-        .executor-layout { display: flex; height: calc(100% - 80px); gap: 25px; }
-        .executor-main { flex: 1; display: flex; flex-direction: column; gap: 15px; }
-        .editor-section { flex: 1; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #050505; min-height: 300px; }
-        .logs-section { height: 220px; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #050505; }
-        .logs-section .console-output { max-height: none; flex: 1; }
-
-        .remotespy-layout { display: flex; height: calc(100% - 80px); gap: 20px; }
-        .remotes-sidebar { width: 320px; min-width: 320px; display: flex; flex-direction: column; gap: 10px; }
-        .remotes-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; min-height: 100px; }
-        .remote-item { background: var(--card); border: 1px solid var(--border); padding: 10px 12px; border-radius: 8px; cursor: pointer; transition: all 0.2s; flex-shrink: 0; }
-        .remote-item:hover { border-color: #444; }
-        .remote-item.selected { border-color: var(--primary); background: var(--primary-dim); }
-        .remote-header { display: flex; align-items: center; gap: 8px; }
-        .remote-type-badge { font-size: 0.6rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; text-transform: uppercase; flex-shrink: 0; }
-        .remote-type-badge.event { background: rgba(16, 185, 129, 0.15); color: var(--success); }
-        .remote-type-badge.function { background: rgba(139, 92, 246, 0.15); color: var(--primary); }
-        .remote-type-badge.bindable { background: rgba(245, 158, 11, 0.15); color: var(--warn); }
-        .remote-name { font-weight: 600; font-size: 0.85rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .remote-count { font-size: 0.7rem; color: var(--text-muted); flex-shrink: 0; }
-        .remote-path { font-size: 0.65rem; color: #555; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-        .calls-panel { flex: 1; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #050505; min-width: 400px; }
-        .calls-list { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 12px; }
-        .call-item { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; flex-shrink: 0; }
-        .call-header { padding: 12px 15px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
-        .call-header:hover { background: rgba(255,255,255,0.02); }
-        .call-time { font-size: 0.75rem; color: #555; font-family: 'JetBrains Mono'; flex-shrink: 0; }
-        .call-args-preview { flex: 1; font-size: 0.8rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .call-body { padding: 15px; display: none; max-height: 500px; overflow-y: auto; }
-        .call-body.expanded { display: block; }
-        .arg-row { display: flex; gap: 15px; padding: 8px 12px; background: #0a0a0c; border-radius: 6px; margin-bottom: 8px; align-items: flex-start; }
-        .arg-index { font-size: 0.75rem; color: var(--primary); font-weight: 600; min-width: 20px; flex-shrink: 0; }
-        .arg-value { flex: 1; font-family: 'JetBrains Mono'; font-size: 0.8rem; color: #e1e1e6; word-break: break-all; white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
-        .arg-type { font-size: 0.7rem; color: #555; padding: 2px 8px; background: #1a1a1c; border-radius: 4px; }
-        .copy-script-btn { margin-top: 10px; padding: 10px 20px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 8px; }
-        .copy-script-btn:hover { background: var(--primary-hover); }
-        .generated-script { background: #0a0a0c; padding: 15px; border-radius: 8px; margin-top: 10px; font-family: 'JetBrains Mono'; font-size: 0.75rem; white-space: pre-wrap; color: #e1e1e6; border: 1px solid var(--border); max-height: 300px; overflow-y: auto; }
-
-        .tab-buttons { display: flex; gap: 5px; }
-        .tab-btn { padding: 6px 12px; background: transparent; border: 1px solid var(--border); color: var(--text-muted); border-radius: 6px; cursor: pointer; font-size: 0.8rem; }
-        .tab-btn.active { background: var(--primary-dim); border-color: var(--primary); color: var(--primary); }
-
-        .pagination { display: flex; gap: 4px; justify-content: center; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); margin-top: auto; flex-wrap: wrap; }
-        .page-btn { padding: 5px 10px; background: var(--card); border: 1px solid var(--border); color: var(--text-muted); border-radius: 6px; cursor: pointer; font-size: 0.75rem; min-width: 32px; text-align: center; }
-        .page-btn:hover { border-color: #444; color: var(--text); }
-        .page-btn.active { background: var(--primary); border-color: var(--primary); color: white; }
-        .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .page-info { font-size: 0.7rem; color: var(--text-muted); padding: 4px 8px; }
-        .page-jump { width: 50px; padding: 5px 8px; background: var(--card); border: 1px solid var(--border); color: var(--text); border-radius: 6px; font-size: 0.75rem; text-align: center; }
-        .page-jump:focus { border-color: var(--primary); outline: none; }
-
-        .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; }
-        .toast { padding: 14px 20px; border-radius: 10px; background: var(--card); border: 1px solid var(--border); color: var(--text); font-size: 0.9rem; display: flex; align-items: center; gap: 12px; animation: toastIn 0.3s ease; box-shadow: 0 10px 40px rgba(0,0,0,0.4); min-width: 280px; }
-        .toast.success { border-color: var(--success); background: rgba(16, 185, 129, 0.1); }
-        .toast.error { border-color: var(--danger); background: rgba(239, 68, 68, 0.1); }
-        .toast.info { border-color: var(--primary); background: rgba(139, 92, 246, 0.1); }
-        .toast-icon { font-size: 1.2rem; }
-        .toast.success .toast-icon { color: var(--success); }
-        .toast.error .toast-icon { color: var(--danger); }
-        .toast.info .toast-icon { color: var(--primary); }
-        .toast-message { flex: 1; }
-        .toast-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.1rem; padding: 0; }
-        .toast-close:hover { color: var(--text); }
-        @keyframes toastIn { from { opacity: 0; transform: translateX(100px); } to { opacity: 1; transform: translateX(0); } }
-        @keyframes toastOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(100px); } }
-        .toast.hiding { animation: toastOut 0.3s ease forwards; }
-
-        .script-item { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--border); padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
-        .script-item:hover { border-color: #444; background: rgba(255,255,255,0.02); }
-        .script-item .script-name { flex: 1; font-size: 0.85rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .script-item .script-actions { display: flex; gap: 5px; opacity: 0; transition: opacity 0.2s; }
-        .script-item:hover .script-actions { opacity: 1; }
-        .script-item .script-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; font-size: 0.75rem; border-radius: 4px; }
-        .script-item .script-btn:hover { color: var(--text); background: rgba(255,255,255,0.1); }
-        .script-item .script-btn.delete:hover { color: var(--danger); }
-
-        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 10000; display: flex; align-items: center; justify-content: center; animation: fadeIn 0.2s; }
-        .modal-box { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 25px; min-width: 350px; max-width: 450px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); animation: modalIn 0.2s; }
-        .modal-title { font-family: 'Space Grotesk', sans-serif; font-size: 1.2rem; font-weight: 600; margin-bottom: 15px; }
-        .modal-input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 12px 15px; border-radius: 8px; font-size: 0.95rem; margin-bottom: 20px; }
-        .modal-input:focus { border-color: var(--primary); outline: none; }
-        .modal-buttons { display: flex; gap: 10px; justify-content: flex-end; }
-        .modal-btn { padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.9rem; border: none; transition: 0.2s; }
-        .modal-btn.primary { background: var(--primary); color: white; }
-        .modal-btn.primary:hover { background: var(--primary-hover); }
-        .modal-btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--text-muted); }
-        .modal-btn.ghost:hover { border-color: var(--text); color: var(--text); }
-        .modal-btn.danger { background: var(--danger); color: white; }
-        .modal-btn.danger:hover { background: #dc2626; }
-        .modal-text { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px; line-height: 1.5; }
-        @keyframes modalIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-
-        .drag-handle { cursor: grab; padding: 8px; color: var(--text-muted); display: flex; align-items: center; user-select: none; }
-        .drag-handle:hover { color: var(--text); }
-        .drag-handle:active { cursor: grabbing; }
-        .drag-handle svg { width: 16px; height: 16px; }
-        .config-row.dragging { opacity: 0.5; transform: scale(1.02); box-shadow: 0 10px 40px rgba(139, 92, 246, 0.3); border-color: var(--primary); }
-        .config-row.drag-over { border-color: var(--primary); background: var(--primary-dim); }
-        .config-row.selected { border-color: var(--primary); background: rgba(139, 92, 246, 0.05); }
-        .config-row { transition: transform 0.2s, opacity 0.2s, border-color 0.2s, background 0.2s; }
-    </style>
-</head>
-<body>
-    <div class="toast-container" id="toast-container"></div>
-    <div id="modal-container"></div>
-
-    <div class="sidebar">
-        <div class="brand">BYORL <span>CONTROL</span></div>
-        <button class="nav-btn active" onclick="setTab('sessions', this)">Active Sessions</button>
-        <button class="nav-btn" onclick="setTab('rejoiner', this)">Account Manager</button>
-        <button class="nav-btn" onclick="setTab('executor', this)">Executor</button>
-        <button class="nav-btn" onclick="setTab('remotespy', this)">Remote Spy</button>
-        <button class="nav-btn" onclick="setTab('settings', this)">Settings</button>
-    </div>
-
-    <div class="content">
-        <!-- LIVE SESSIONS -->
-        <div id="sessions" class="page active">
-            <h2>Live Accounts</h2>
-            <div class="subtitle">Real-time monitoring of active Roblox instances.</div>
-            <div style="margin-bottom:20px;display:flex;gap:10px;align-items:center;">
-                <button class="btn btn-ghost" style="width:auto;padding:8px 15px;" onclick="checkAllCookies()">🔍 Check All Cookies</button>
-                <span id="cookie-status" style="font-size:0.85rem;color:var(--text-muted);"></span>
-            </div>
-            <div id="grid" class="grid"></div>
-        </div>
-
-        <!-- ACCOUNT MANAGER -->
-        <div id="rejoiner" class="page">
-            <h2>Account Manager</h2>
-            <div class="subtitle">Manage accounts, cookies, and launch settings.</div>
+wss.on('connection', (ws) => {
+    let clientUserId = null;
+    
+    ws.on('message', (data) => {
+        try {
+            const msg = JSON.parse(data.toString());
             
-            <!-- Cookie Login -->
-            <div class="add-box">
-                <div class="input-group" style="flex: 1;"><span class="input-label">Roblox Cookie</span><input id="new-cookie" type="password" placeholder="Paste .ROBLOSECURITY cookie here..."></div>
-                <button class="btn btn-primary" style="width: auto; height: 42px; margin-bottom:1px;" id="add-account-btn" onclick="addAccountByCookie()">Add Account</button>
-                <button class="btn btn-ghost" style="width: auto; height: 42px; margin-bottom:1px;" onclick="openBrowserLogin()" title="Login via browser">🌐 Browser Login</button>
-            </div>
-            
-            <!-- Bulk Actions Bar -->
-            <div class="add-box" style="margin-bottom: 15px; padding: 15px;">
-                <div style="display:flex; align-items:center; gap:10px; flex:1;">
-                    <label class="filter-chk"><input type="checkbox" id="select-all-accounts" onchange="toggleSelectAllAccounts()"> Select All</label>
-                    <span style="color:var(--text-muted); font-size:0.85rem;" id="selected-count">0 selected</span>
-                </div>
-                <select id="bulk-group" style="padding:8px 12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:0.85rem;">
-                    <option value="">Set Group...</option>
-                    <option value="Main">Main</option>
-                    <option value="Alts">Alts</option>
-                    <option value="Farm">Farm</option>
-                    <option value="">No Group</option>
-                </select>
-                <button class="btn btn-ghost" style="width:auto; padding:8px 15px;" onclick="bulkSetGroup()">Apply Group</button>
-                <button class="btn btn-primary" style="width:auto; padding:8px 15px;" onclick="bulkLaunchSelected()">🚀 Launch Selected</button>
-                <button class="btn btn-ghost" style="width:auto; padding:8px 15px;" onclick="showBulkPlaceModal()">Set Place ID</button>
-            </div>
-            
-            <!-- Group Filter -->
-            <div style="margin-bottom: 15px; display:flex; gap:8px; flex-wrap:wrap;">
-                <button class="tab-btn active" onclick="filterByGroup('', this)">All</button>
-                <button class="tab-btn" onclick="filterByGroup('Main', this)">Main</button>
-                <button class="tab-btn" onclick="filterByGroup('Alts', this)">Alts</button>
-                <button class="tab-btn" onclick="filterByGroup('Farm', this)">Farm</button>
-                <button class="tab-btn" onclick="filterByGroup('ungrouped', this)">Ungrouped</button>
-            </div>
-            
-            <div id="config-list" class="config-list"></div>
-        </div>
-
-        <!-- EXECUTOR WITH LOGS -->
-        <div id="executor" class="page">
-            <h2>Global Execution</h2>
-            <div class="subtitle">Inject Luau code into selected clients instantly.</div>
-            <div class="executor-layout">
-                <div class="targets-panel">
-                    <div class="panel-header"><div class="panel-title">Target Clients</div><button class="select-all-btn" onclick="toggleSelectAll('exec')">Select All</button></div>
-                    <div class="targets-list" id="exec-target-list"><div class="empty-message">No clients</div></div>
-                    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border);">
-                        <div class="panel-header" style="margin-bottom: 10px;"><div class="panel-title">Script Library</div><button class="select-all-btn" onclick="saveCurrentScript()">+ Save</button></div>
-                        <div style="display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap;">
-                            <button class="tab-btn active" style="padding:4px 8px;font-size:0.7rem;" onclick="filterScripts('', this)">All</button>
-                            <button class="tab-btn" style="padding:4px 8px;font-size:0.7rem;" onclick="filterScripts('General', this)">General</button>
-                            <button class="tab-btn" style="padding:4px 8px;font-size:0.7rem;" onclick="filterScripts('Farm', this)">Farm</button>
-                            <button class="tab-btn" style="padding:4px 8px;font-size:0.7rem;" onclick="filterScripts('Utility', this)">Utility</button>
-                        </div>
-                        <div class="targets-list" id="script-library" style="max-height: 200px;"><div class="empty-message">No saved scripts</div></div>
-                    </div>
-                </div>
-                <div class="executor-main">
-                    <div class="editor-section">
-                        <div class="panel-toolbar">
-                            <span class="tool-btn" onclick="editor.setValue('')">Clear</span>
-                            <span class="tool-btn" onclick="insertTemplate()">Insert Template</span>
-                            <div style="flex:1"></div>
-                        </div>
-                        <div id="monaco-container"></div>
-                        <div class="editor-footer">
-                            <button class="btn btn-ghost" style="width:auto;" onclick="execEcoMode()">🌿 Eco Mode</button>
-                            <button class="btn btn-primary" style="width:auto; min-width:150px;" id="exec-btn" onclick="execScript()">Execute Script</button>
-                        </div>
-                    </div>
-                    <div class="logs-section">
-                        <div class="panel-toolbar">
-                            <span style="font-weight:600; font-size:0.9rem;">Output Logs</span>
-                            <span class="tool-btn" onclick="clearLogs()">Clear</span>
-                            <input type="text" id="log-search" placeholder="Search logs..." style="width:120px;padding:5px 10px;font-size:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);" oninput="renderLogs()">
-                            <label class="filter-chk"><input type="checkbox" id="chk-autoscroll" checked> Auto-scroll</label>
-                            <div class="filter-group">
-                                <label class="filter-chk"><input type="checkbox" id="chk-info" checked onchange="renderLogs()"> Info</label>
-                                <label class="filter-chk"><input type="checkbox" id="chk-warn" checked onchange="renderLogs()"> Warn</label>
-                                <label class="filter-chk"><input type="checkbox" id="chk-error" checked onchange="renderLogs()"> Error</label>
-                            </div>
-                        </div>
-                        <div id="console-output" class="console-output"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- REMOTESPY -->
-        <div id="remotespy" class="page">
-            <h2>Remote Spy</h2>
-            <div class="subtitle">Monitor and intercept remote calls from connected clients.</div>
-            <div class="remotespy-layout">
-                <div class="targets-panel">
-                    <div class="panel-header"><div class="panel-title">Select Client</div></div>
-                    <div class="targets-list" id="spy-target-list"><div class="empty-message">No clients</div></div>
-                </div>
-                <div class="remotes-sidebar">
-                    <div class="panel-header">
-                        <div class="panel-title">Remotes</div>
-                        <div class="tab-buttons">
-                            <button class="tab-btn active" id="tab-outgoing" onclick="setSpyTab('Outgoing')">Outgoing</button>
-                            <button class="tab-btn" id="tab-incoming" onclick="setSpyTab('Incoming')">Incoming</button>
-                        </div>
-                    </div>
-                    <div class="remotes-list" id="remotes-list"><div class="empty-message">Select a client</div></div>
-                    <div class="pagination" id="remotes-pagination"></div>
-                </div>
-                <div class="calls-panel">
-                    <div class="panel-toolbar">
-                        <span style="font-weight:600; font-size:0.9rem;">Call History</span>
-                        <span class="tool-btn" onclick="clearRemoteSpy()">Clear All</span>
-                    </div>
-                    <div class="calls-list" id="calls-list"><div class="empty-message">Select a remote</div></div>
-                    <div class="pagination" id="calls-pagination"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- SETTINGS -->
-        <div id="settings" class="page">
-            <h2>System Settings</h2>
-            <div class="subtitle">Configure connection timeouts and behavior.</div>
-            <div class="setting-box">
-                <div style="margin-bottom: 25px;">
-                    <label style="display:block; margin-bottom:10px; font-weight:600;">Crash Detection Timeout</label>
-                    <div style="font-size: 0.85rem; color:#888; margin-bottom:10px;">Grace period (seconds) before relaunching a disconnected account.</div>
-                    <input type="number" id="timeout" placeholder="15">
-                </div>
-                <div style="margin-bottom: 25px;">
-                    <label class="toggle-label">
-                        <input type="checkbox" id="remotespy-toggle">
-                        <div>
-                            <span style="font-weight:600;">Enable Remote Spy</span>
-                            <div style="font-size: 0.8rem; color:#888; margin-top:5px;">When enabled, the Lua script will hook and monitor remote calls. Disable if not needed for better performance.</div>
-                        </div>
-                    </label>
-                </div>
-                <button class="btn btn-primary" style="width: auto;" onclick="saveSettings()">Save Settings</button>
-            </div>
-
-            <div class="setting-box" style="margin-top: 25px;">
-                <div style="margin-bottom: 25px;">
-                    <label style="display:block; margin-bottom:10px; font-weight:600;">Auto RAM Trim</label>
-                    <div style="font-size: 0.85rem; color:#888; margin-bottom:15px;">Automatically trim Roblox memory usage to reduce RAM consumption. Useful for running multiple accounts.</div>
-                    <label class="toggle-label" style="margin-bottom: 15px;">
-                        <input type="checkbox" id="autotrim-toggle">
-                        <div>
-                            <span style="font-weight:600;">Enable Auto Trim</span>
-                            <div style="font-size: 0.8rem; color:#888; margin-top:5px;">Periodically sends memory cleanup commands to connected clients.</div>
-                        </div>
-                    </label>
-                    <div style="margin-bottom: 15px;">
-                        <span class="input-label">Target RAM Usage: <span id="trim-target-display">750</span> MB</span>
-                        <input type="range" id="autotrim-target" min="256" max="2048" step="64" value="750" style="width:100%; accent-color: var(--primary); margin-top: 8px;" oninput="document.getElementById('trim-target-display').textContent = this.value">
-                        <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:#555; margin-top:4px;">
-                            <span>256 MB (Aggressive)</span>
-                            <span>2048 MB (Light)</span>
-                        </div>
-                    </div>
-                    <div style="margin-bottom: 15px;">
-                        <span class="input-label">Trim Interval (seconds)</span>
-                        <input type="number" id="autotrim-interval" value="60" min="10" max="300" placeholder="60" style="margin-top: 8px;">
-                        <div style="font-size:0.75rem; color:#555; margin-top:4px;">How often to check and trim RAM (10-300 seconds)</div>
-                    </div>
-                    <button class="btn btn-ghost" style="width: auto;" onclick="triggerManualTrim()">🧹 Trim Now (All Clients)</button>
-                </div>
-            </div>
-
-            <div class="setting-box" style="margin-top: 25px;">
-                <div style="margin-bottom: 20px;">
-                    <label style="display:block; margin-bottom:10px; font-weight:600;">Run on Windows Startup</label>
-                    <div style="font-size: 0.85rem; color:#888; margin-bottom:15px;">Automatically launch Byorl Control when Windows starts. Set the full path to your index.js file.</div>
-                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-                        <div id="startup-status" style="padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 600;"></div>
-                    </div>
-                    <div style="margin-bottom: 15px;">
-                        <span class="input-label">Script Path (full path to index.js)</span>
-                        <input type="text" id="startup-path" placeholder="C:\Users\YourName\Projects\byorl\index.js" style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">
-                    </div>
-                    <div style="display: flex; gap: 10px;">
-                        <button class="btn btn-primary" style="width: auto;" id="startup-add-btn" onclick="addToStartup()">Add to Startup</button>
-                        <button class="btn btn-danger" style="width: auto;" id="startup-remove-btn" onclick="removeFromStartup()">Remove from Startup</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="setting-box" style="margin-top: 25px;">
-                <div style="margin-bottom: 20px;">
-                    <label style="display:block; margin-bottom:10px; font-weight:600;">Backup & Restore</label>
-                    <div style="font-size: 0.85rem; color:#888; margin-bottom:15px;">Export your accounts, settings, and scripts to a backup file, or import from a previous backup.</div>
-                    <div style="display: flex; gap: 10px;">
-                        <button class="btn btn-primary" style="width: auto;" onclick="exportConfig()">📥 Export Backup</button>
-                        <button class="btn btn-ghost" style="width: auto;" onclick="document.getElementById('import-file').click()">📤 Import Backup</button>
-                        <input type="file" id="import-file" accept=".json" style="display:none" onchange="importConfig(this)">
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        const socket = io();
-        let savedAccounts = {};
-        let activeClients = [];
-        
-        let execTargets = [];
-        let logs = [];
-        
-        let spySelectedClient = null;
-        let spySelectedRemote = null;
-        let spyTab = 'Outgoing';
-        let remoteSpyData = {};
-        let remotesPage = 1;
-        let callsPage = 1;
-        const ITEMS_PER_PAGE = 25;
-        let expandedCalls = new Set();
-        
-        function generatePagination(currentPage, totalPages, onPageChange, containerId) {
-            const container = document.getElementById(containerId);
-            if (totalPages <= 1) {
-                container.innerHTML = '';
-                return;
-            }
-            
-            let html = '';
-            const maxButtons = 9;
-            
-            if (totalPages <= maxButtons) {
-                for (let i = 1; i <= totalPages; i++) {
-                    html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="${onPageChange}(${i})">${i}</button>`;
-                }
-            } else {
-                if (currentPage <= 6) {
-                    for (let i = 1; i <= 7; i++) {
-                        html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="${onPageChange}(${i})">${i}</button>`;
-                    }
-                    html += `<input type="number" class="page-jump" min="1" max="${totalPages}" placeholder="-" onkeydown="if(event.key==='Enter'){let v=Math.min(Math.max(1,parseInt(this.value)||1),${totalPages});${onPageChange}(v);this.value='';}" title="Jump to page">`;
-                    html += `<button class="page-btn ${totalPages === currentPage ? 'active' : ''}" onclick="${onPageChange}(${totalPages})">${totalPages}</button>`;
-                } else if (currentPage >= totalPages - 5) {
-                    html += `<button class="page-btn ${1 === currentPage ? 'active' : ''}" onclick="${onPageChange}(1)">1</button>`;
-                    html += `<input type="number" class="page-jump" min="1" max="${totalPages}" placeholder="-" onkeydown="if(event.key==='Enter'){let v=Math.min(Math.max(1,parseInt(this.value)||1),${totalPages});${onPageChange}(v);this.value='';}" title="Jump to page">`;
-                    for (let i = totalPages - 6; i <= totalPages; i++) {
-                        html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="${onPageChange}(${i})">${i}</button>`;
-                    }
+            if (msg.type === 'heartbeat') {
+                const { userId, username, ping, ram } = msg;
+                const strId = userId?.toString();
+                if (!strId) return;
+                
+                clientUserId = strId;
+                wsClients.set(strId, ws);
+                
+                if (!clients[strId]) {
+                    clients[strId] = {
+                        data: { userId, username, ping, ram },
+                        lastSeen: Date.now(),
+                        connectedAt: Date.now(),
+                        terminate: false,
+                        commandQueue: [],
+                        useWebSocket: true
+                    };
                 } else {
-                    html += `<button class="page-btn" onclick="${onPageChange}(1)">1</button>`;
-                    html += `<input type="number" class="page-jump" min="1" max="${totalPages}" placeholder="-" onkeydown="if(event.key==='Enter'){let v=Math.min(Math.max(1,parseInt(this.value)||1),${totalPages});${onPageChange}(v);this.value='';}" title="Jump to page">`;
-                    for (let i = currentPage - 2; i <= currentPage + 2; i++) {
-                        html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="${onPageChange}(${i})">${i}</button>`;
-                    }
-                    html += `<input type="number" class="page-jump" min="1" max="${totalPages}" placeholder="-" onkeydown="if(event.key==='Enter'){let v=Math.min(Math.max(1,parseInt(this.value)||1),${totalPages});${onPageChange}(v);this.value='';}" title="Jump to page">`;
-                    html += `<button class="page-btn" onclick="${onPageChange}(${totalPages})">${totalPages}</button>`;
+                    clients[strId].data = { userId, username, ping, ram };
+                    clients[strId].lastSeen = Date.now();
+                    clients[strId].useWebSocket = true;
                 }
+                
+                const response = {
+                    type: 'heartbeat_response',
+                    kill: clients[strId].terminate,
+                    script: clients[strId].commandQueue.shift() || null,
+                    spyEnabled: globalSettings.spyEnabled
+                };
+                
+                if (clients[strId].pendingTrim) {
+                    response.trimRAM = true;
+                    response.trimTargetMB = clients[strId].pendingTrim.targetMB;
+                    delete clients[strId].pendingTrim;
+                }
+                
+                ws.send(JSON.stringify(response));
+                
+                emitClientUpdate();
             }
-            
-            container.innerHTML = html;
-        }
-        
-        let editor = null;
-        let editorLoaded = false;
-
-        function loadMonacoEditor() {
-            if (editorLoaded) return;
-            editorLoaded = true;
-            
-            require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }});
-            require(['vs/editor/editor.main'], function() {
-                monaco.editor.defineTheme('byorl-dark', { base: 'vs-dark', inherit: true, rules: [{ background: '050505' }], colors: { 'editor.background': '#050505' } });
-
-                editor = monaco.editor.create(document.getElementById('monaco-container'), {
-                    value: 'print("Connected to Byorl Control")',
-                    language: 'lua',
-                    theme: 'byorl-dark',
-                    automaticLayout: true,
-                    minimap: { enabled: false },
-                    fontSize: 14,
-                    fontFamily: "'JetBrains Mono', 'Courier New', monospace",
-                    letterSpacing: 0,
-                    wordWrap: 'on',
-                    scrollBeyondLastLine: false,
-                    renderWhitespace: 'none',
-                    occurrencesHighlight: false,
-                    selectionHighlight: false,
-                    codeLens: false,
-                    folding: false,
-                    links: false,
-                    contextmenu: false,
-                    quickSuggestions: false,
-                    parameterHints: { enabled: false },
-                    suggestOnTriggerCharacters: false,
-                    acceptSuggestionOnEnter: 'off',
-                    tabCompletion: 'off',
-                    wordBasedSuggestions: false
+            else if (msg.type === 'log') {
+                io.emit('newLog', {
+                    userId: msg.userId,
+                    msg: msg.msg,
+                    type: msg.logType || 'info',
+                    timestamp: new Date().toLocaleTimeString('en-US', { hour12: false })
                 });
-            });
-        }
-
-        function setTab(id, btn) {
-            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(id).classList.add('active');
-            btn.classList.add('active');
-            if(id === 'executor') {
-                if (!editorLoaded) loadMonacoEditor();
-                if (editor) setTimeout(() => editor.layout(), 100);
             }
+            else if (msg.type === 'spy') {
+                handleSpyData(msg);
+            }
+        } catch (e) {
+            console.error('WebSocket message error:', e.message);
         }
+    });
+    
+    ws.on('close', () => {
+        if (clientUserId) {
+            wsClients.delete(clientUserId);
+        }
+    });
+    
+    ws.on('error', (err) => {
+        console.error('WebSocket error:', err.message);
+    });
+});
 
-        const avatarCache = new Map();
-        const MAX_AVATAR_CACHE = 50;
+function sendScriptToWsClient(userId, script) {
+    const ws = wsClients.get(userId);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'execute', script }));
+        return true;
+    }
+    return false;
+}
+
+function handleSpyData(msg) {
+    const { userId, name, className, path: remotePath, method, direction, args, code } = msg;
+    const strId = userId?.toString();
+    if (!strId) return;
+    
+    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const dir = direction || 'Outgoing';
+    
+    if (!remoteSpyData[strId]) {
+        remoteSpyData[strId] = { Outgoing: {}, Incoming: {} };
+    }
+    if (!remoteSpyData[strId].Outgoing) remoteSpyData[strId].Outgoing = {};
+    if (!remoteSpyData[strId].Incoming) remoteSpyData[strId].Incoming = {};
+    
+    const remoteCount = Object.keys(remoteSpyData[strId][dir]).length;
+    if (remoteCount >= MAX_REMOTES_PER_CLIENT) return;
+    
+    const remoteKey = remotePath + '_' + dir;
+    
+    if (!remoteSpyData[strId][dir][remoteKey]) {
+        remoteSpyData[strId][dir][remoteKey] = {
+            name: name,
+            path: remotePath,
+            className: className,
+            method: method,
+            direction: dir,
+            calls: []
+        };
+    }
+    
+    if (remoteSpyData[strId][dir][remoteKey].calls.length >= MAX_CALLS_PER_REMOTE) {
+        remoteSpyData[strId][dir][remoteKey].calls.shift();
+    }
+    
+    const truncatedArgs = (args || []).map(a => {
+        if (typeof a === 'string' && a.length > 1000) {
+            return a.substring(0, 1000) + '... [truncated]';
+        }
+        return a;
+    });
+    
+    remoteSpyData[strId][dir][remoteKey].calls.push({
+        args: truncatedArgs,
+        code: code?.substring(0, 5000) || '',
+        timestamp: timestamp
+    });
+    
+    io.emit('spyUpdate', {
+        userId: strId,
+        direction: dir,
+        remote: remoteSpyData[strId][dir][remoteKey]
+    });
+}
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.static('public'));
+
+const MAX_CALLS_PER_REMOTE = 50;
+const MAX_REMOTES_PER_CLIENT = 100;
+
+let lastClientUpdate = 0;
+const CLIENT_UPDATE_THROTTLE = 1000;
+
+function emitClientUpdate() {
+    const now = Date.now();
+    if (now - lastClientUpdate < CLIENT_UPDATE_THROTTLE) return;
+    lastClientUpdate = now;
+    io.emit('updateClients', getClientList());
+}
+
+let clients = {};
+let savedAccounts = {};
+let accountOrder = []; 
+let globalSettings = { disconnectTimeout: 30, spyEnabled: false, startupEnabled: false, scriptPath: '' };
+let remoteSpyData = {};
+let savedScripts = {};
+
+if (!fs.existsSync('./config')) {
+    fs.mkdirSync('./config');
+}
+
+if (fs.existsSync('./config/accounts.json')) {
+    try { savedAccounts = JSON.parse(fs.readFileSync('./config/accounts.json')); } catch(e) {}
+}
+if (fs.existsSync('./config/account-order.json')) {
+    try { accountOrder = JSON.parse(fs.readFileSync('./config/account-order.json')); } catch(e) {}
+}
+if (fs.existsSync('./config/settings.json')) {
+    try { globalSettings = JSON.parse(fs.readFileSync('./config/settings.json')); } catch(e) {}
+}
+if (fs.existsSync('./config/scripts.json')) {
+    try { savedScripts = JSON.parse(fs.readFileSync('./config/scripts.json')); } catch(e) {}
+}
+
+function atomicWrite(filePath, data) {
+    const tempPath = filePath + '.tmp';
+    try {
+        fs.writeFileSync(tempPath, JSON.stringify(data, null, 2));
+        fs.renameSync(tempPath, filePath);
+    } catch (e) {
+        try { fs.unlinkSync(tempPath); } catch {}
+        console.error(`Failed to save ${filePath}:`, e.message);
+    }
+}
+
+function saveConfig() { atomicWrite('./config/accounts.json', savedAccounts); }
+function saveSettings() { atomicWrite('./config/settings.json', globalSettings); }
+function saveScripts() { atomicWrite('./config/scripts.json', savedScripts); }
+function saveAccountOrder() { atomicWrite('./config/account-order.json', accountOrder); }
+
+async function getAuthTicket(cookie) {
+    try {
+        const headers = { 
+            'Cookie': `.ROBLOSECURITY=${cookie}`, 
+            'Referer': 'https://www.roblox.com/', 
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        };
         
-        function getAvatar(id) {
-            if (!avatarCache.has(id)) {
-                if (avatarCache.size >= MAX_AVATAR_CACHE) {
-                    const firstKey = avatarCache.keys().next().value;
-                    avatarCache.delete(firstKey);
-                }
-                avatarCache.set(id, `/avatar/${id}`);
-            }
-            return avatarCache.get(id);
-        }
-
-        let updateClientsThrottle = null;
-        socket.on('updateClients', (clients) => {
-            if (updateClientsThrottle) return;
-            updateClientsThrottle = setTimeout(() => { updateClientsThrottle = null; }, 500);
-            
-            const currentIds = clients.map(c => c.userId.toString());
-            const oldIds = activeClients.map(c => c.userId.toString());
-            
-            oldIds.forEach(id => {
-                if (!currentIds.includes(id) && remoteSpyData[id]) {
-                    delete remoteSpyData[id];
-                }
-            });
-            
-            activeClients = clients;
-            renderSessions(clients);
-            renderTargets('exec', clients);
-            renderSpyClients(clients);
-            renderConfig();
+        let res = await fetch("https://auth.roblox.com/v1/authentication-ticket", {
+            method: 'POST',
+            headers
         });
-
-        socket.on('updateConfig', function(data) { 
-            savedAccounts = data; 
-            Object.keys(data).forEach(function(id) {
-                if (accountOrder.indexOf(id) === -1) accountOrder.push(id);
-            });
-            accountOrder = accountOrder.filter(function(id) { return data[id]; });
-            renderConfig(); 
-        });
         
-        const MAX_LOGS = 200;
-        const MAX_LOG_DOM_ELEMENTS = 100;
-        
-        socket.on('newLog', (logData) => {
-            logs.push(logData);
-            while(logs.length > MAX_LOGS) logs.shift();
-            appendLog(logData);
-            trimLogDOM();
-        });
-        
-        function trimLogDOM() {
-            const container = document.getElementById('console-output');
-            while(container.children.length > MAX_LOG_DOM_ELEMENTS) {
-                container.removeChild(container.firstChild);
-            }
-        }
-
-        const MAX_CALLS_PER_REMOTE_CLIENT = 50;
-        const MAX_REMOTES_PER_CLIENT = 100;
-        let spyUpdateThrottle = {};
-        
-        socket.on('spyUpdate', (data) => {
-            const { userId, direction, remote } = data;
-            if (!remoteSpyData[userId]) remoteSpyData[userId] = { Outgoing: {}, Incoming: {} };
-            if (!remoteSpyData[userId][direction]) remoteSpyData[userId][direction] = {};
-            
-            const remoteKeys = Object.keys(remoteSpyData[userId][direction]);
-            if (remoteKeys.length >= MAX_REMOTES_PER_CLIENT && !remoteSpyData[userId][direction][remote.path + '_' + direction]) {
-                return;
-            }
-            
-            const remoteKey = remote.path + '_' + direction;
-            const isNewRemote = !remoteSpyData[userId][direction][remoteKey];
-            
-            if (remote.calls && remote.calls.length > MAX_CALLS_PER_REMOTE_CLIENT) {
-                remote.calls = remote.calls.slice(-MAX_CALLS_PER_REMOTE_CLIENT);
-            }
-            
-            remoteSpyData[userId][direction][remoteKey] = remote;
-            
-            if (spySelectedClient === userId && spyTab === direction) {
-                const throttleKey = `${userId}_${direction}`;
-                if (!spyUpdateThrottle[throttleKey]) {
-                    spyUpdateThrottle[throttleKey] = true;
-                    setTimeout(() => {
-                        spyUpdateThrottle[throttleKey] = false;
-                        if (isNewRemote) {
-                            renderRemotesList();
-                        } else {
-                            const items = document.querySelectorAll('.remote-item');
-                            items.forEach(item => {
-                                const nameEl = item.querySelector('.remote-name');
-                                if (nameEl && nameEl.textContent === remote.name) {
-                                    let totalCalls = 0;
-                                    Object.values(remoteSpyData[userId][direction]).forEach(r => {
-                                        if (r.name === remote.name) totalCalls += r.calls.length;
-                                    });
-                                    const countEl = item.querySelector('.remote-count');
-                                    if (countEl) countEl.textContent = 'x' + totalCalls;
-                                }
-                            });
-                        }
-                        if (spySelectedRemote === remote.name) {
-                            renderCallsList();
-                        }
-                    }, 100);
-                }
-            }
-        });
-
-        socket.on('spyCleared', (userId) => {
-            remoteSpyData[userId] = { Outgoing: {}, Incoming: {} };
-            if (spySelectedClient === userId) {
-                renderRemotesList();
-                renderCallsList();
-            }
-        });
-
-        socket.on('settingsUpdated', (settings) => {
-            document.getElementById('timeout').value = settings.disconnectTimeout;
-            document.getElementById('remotespy-toggle').checked = settings.spyEnabled;
-            document.getElementById('autotrim-toggle').checked = settings.autoTrimEnabled || false;
-            document.getElementById('autotrim-target').value = settings.autoTrimTargetMB || 750;
-            document.getElementById('trim-target-display').textContent = settings.autoTrimTargetMB || 750;
-            document.getElementById('autotrim-interval').value = settings.autoTrimIntervalSeconds || 60;
-        });
-
-        function clearLogs() { 
-            logs.length = 0;
-            document.getElementById('console-output').innerHTML = ''; 
-        }
-        
-        function cleanupMemory() {
-            const connectedIds = activeClients.map(c => c.userId.toString());
-            
-            Object.keys(remoteSpyData).forEach(id => {
-                if (!connectedIds.includes(id)) {
-                    delete remoteSpyData[id];
-                }
-            });
-            
-            Object.keys(remoteSpyData).forEach(userId => {
-                ['Outgoing', 'Incoming'].forEach(dir => {
-                    if (remoteSpyData[userId][dir]) {
-                        const keys = Object.keys(remoteSpyData[userId][dir]);
-                        if (keys.length > MAX_REMOTES_PER_CLIENT) {
-                            keys.slice(0, keys.length - MAX_REMOTES_PER_CLIENT).forEach(k => {
-                                delete remoteSpyData[userId][dir][k];
-                            });
-                        }
-                        Object.keys(remoteSpyData[userId][dir]).forEach(key => {
-                            const remote = remoteSpyData[userId][dir][key];
-                            if (remote.calls && remote.calls.length > MAX_CALLS_PER_REMOTE_CLIENT) {
-                                remote.calls = remote.calls.slice(-MAX_CALLS_PER_REMOTE_CLIENT);
-                            }
-                        });
-                    }
-                });
-            });
-            
-            expandedCalls.clear();
-            spyUpdateThrottle = {};
-            
-            if (avatarCache.size > MAX_AVATAR_CACHE) {
-                const keysToDelete = Array.from(avatarCache.keys()).slice(0, avatarCache.size - MAX_AVATAR_CACHE);
-                keysToDelete.forEach(k => avatarCache.delete(k));
-            }
-            
-            while (logs.length > MAX_LOGS) logs.shift();
-            trimLogDOM();
-        }
-        
-        setInterval(cleanupMemory, 30000);
-        
-        function shouldShowLog(l) {
-            const showInfo = document.getElementById('chk-info').checked;
-            const showWarn = document.getElementById('chk-warn').checked;
-            const showError = document.getElementById('chk-error').checked;
-            const searchTerm = (document.getElementById('log-search')?.value || '').toLowerCase();
-            const selectedIds = execTargets;
-            
-            if(selectedIds.length > 0 && !selectedIds.includes(l.userId.toString())) return false;
-            if(l.type === 'info' && !showInfo) return false;
-            if(l.type === 'warn' && !showWarn) return false;
-            if(l.type === 'error' && !showError) return false;
-            if(searchTerm && !l.msg.toLowerCase().includes(searchTerm)) return false;
-            return true;
-        }
-        
-        function createLogEntry(l) {
-            const typeClass = l.type === 'warn' ? 'log-warn' : (l.type === 'error' ? 'log-error' : 'log-info');
-            const client = activeClients.find(c => c.userId == l.userId);
-            const name = client ? client.username : l.userId;
-            return `<div class="log-entry"><div class="log-time">[${l.timestamp}]</div><div class="log-user">${name}</div><div class="${typeClass}">${escapeHtml(l.msg)}</div></div>`;
-        }
-        
-        function appendLog(logData) {
-            if (!shouldShowLog(logData)) return;
-            const container = document.getElementById('console-output');
-            const entry = document.createElement('div');
-            entry.innerHTML = createLogEntry(logData);
-            container.appendChild(entry.firstChild);
-            const autoScroll = document.getElementById('chk-autoscroll')?.checked;
-            if (autoScroll) container.scrollTop = container.scrollHeight;
-        }
-
-        function renderLogs() {
-            const container = document.getElementById('console-output');
-            container.innerHTML = logs.filter(shouldShowLog).map(createLogEntry).join('');
-            const autoScroll = document.getElementById('chk-autoscroll')?.checked;
-            if (autoScroll) container.scrollTop = container.scrollHeight;
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        function formatUptime(ms) {
-            if (!ms || ms < 0) return '0s';
-            const seconds = Math.floor(ms / 1000);
-            const minutes = Math.floor(seconds / 60);
-            const hours = Math.floor(minutes / 60);
-            if (hours > 0) return `${hours}h ${minutes % 60}m`;
-            if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
-            return `${seconds}s`;
-        }
-        
-        function formatAccountAge(days) {
-            if (!days || days < 0) return 'Unknown';
-            const years = Math.floor(days / 365);
-            const remainingDays = days % 365;
-            if (years > 0) {
-                return `${years} year${years > 1 ? 's' : ''}, ${remainingDays} day${remainingDays !== 1 ? 's' : ''}`;
-            }
-            return `${days} day${days !== 1 ? 's' : ''}`;
-        }
-        
-        function renderSessions(clients) {
-            const grid = document.getElementById('grid');
-            const ids = clients.map(c => c.userId.toString());
-            Array.from(grid.children).forEach(el => { if(!ids.includes(el.id.replace('c-',''))) el.remove() });
-            clients.forEach(c => {
-                let card = document.getElementById(`c-${c.userId}`);
-                const pingMs = Math.round((c.ping || 0) * 1000);
-                const ramMb = Math.round(c.ram || 0);
-                const uptimeStr = formatUptime(c.uptime);
-                const connType = c.connectionType === 'websocket' ? 'WS' : 'HTTP';
-                const connColor = c.connectionType === 'websocket' ? 'var(--success)' : 'var(--warn)';
-                const isNew = !card;
-                
-                if(isNew) {
-                    card = document.createElement('div'); 
-                    card.className = 'card'; 
-                    card.id = `c-${c.userId}`;
-                    card.innerHTML = `<div class="status-dot" id="s-${c.userId}"></div><div class="conn-badge" style="position:absolute;top:20px;left:20px;padding:3px 8px;border-radius:4px;font-size:0.65rem;font-weight:600;background:rgba(0,0,0,0.3);color:${connColor}">${connType}</div><img src="${getAvatar(c.userId)}" class="avatar"><div style="font-weight:bold; font-size:1.1rem; margin-bottom:5px;">${c.username}</div><div style="color:#666; font-size:0.8rem; margin-bottom:10px; font-family:'Space Grotesk'">ID: ${c.userId}</div><div style="display:flex; gap:12px; margin-bottom:15px; font-size:0.8rem; flex-wrap:wrap; justify-content:center;"><div style="text-align:center;"><div class="ping-val" style="color:var(--primary); font-weight:600;">${pingMs}ms</div><div style="color:#555; font-size:0.65rem;">PING</div></div><div style="text-align:center;"><div class="ram-val" style="color:var(--success); font-weight:600;">${ramMb}MB</div><div style="color:#555; font-size:0.65rem;">RAM</div></div><div style="text-align:center;"><div class="uptime-val" style="color:var(--info); font-weight:600;">${uptimeStr}</div><div style="color:#555; font-size:0.65rem;">UPTIME</div></div></div><button class="btn btn-danger" onclick="kill('${c.userId}')">Terminate</button>`;
-                    grid.appendChild(card);
-                } else {
-                    const pingEl = card.querySelector('.ping-val');
-                    const ramEl = card.querySelector('.ram-val');
-                    const uptimeEl = card.querySelector('.uptime-val');
-                    const connEl = card.querySelector('.conn-badge');
-                    if (pingEl) pingEl.textContent = `${pingMs}ms`;
-                    if (ramEl) ramEl.textContent = `${ramMb}MB`;
-                    if (uptimeEl) uptimeEl.textContent = uptimeStr;
-                    if (connEl) { connEl.textContent = connType; connEl.style.color = connColor; }
-                }
-                
-                const statusEl = document.getElementById(`s-${c.userId}`);
-                if (statusEl) {
-                    statusEl.className = `status-dot ${c.status === 'unstable' ? 'status-warn' : 'status-good'}`;
-                    statusEl.textContent = c.status === 'unstable' ? 'UNSTABLE' : 'ONLINE';
-                }
-            });
-        }
-
-        function getAccountStatus(uid) {
-            const client = activeClients.find(c => c.userId.toString() === uid.toString());
-            if (!client) return { status: 'offline', class: 'status-offline', text: 'OFFLINE' };
-            if (client.status === 'unstable') return { status: 'unstable', class: 'status-warn', text: 'UNSTABLE' };
-            return { status: 'online', class: 'status-good', text: 'ONLINE' };
-        }
-
-        var accountOrder = [];
-        var selectedAccounts = new Set();
-        var currentGroupFilter = '';
-        
-        function renderConfig() {
-            const list = document.getElementById('config-list');
-            list.innerHTML = "";
-            
-            const orderedIds = accountOrder.length > 0 ? accountOrder : Object.keys(savedAccounts);
-            
-            orderedIds.forEach(function(uid) {
-                const d = savedAccounts[uid];
-                if (!d) return;
-                
-                const group = d.group || '';
-                if (currentGroupFilter === 'ungrouped' && group) return;
-                if (currentGroupFilter && currentGroupFilter !== 'ungrouped' && group !== currentGroupFilter) return;
-                
-                const status = getAccountStatus(uid);
-                const isSelected = selectedAccounts.has(uid);
-                const row = document.createElement('div'); 
-                row.className = 'config-row' + (isSelected ? ' selected' : '');
-                row.setAttribute('data-uid', uid);
-                row.draggable = false;
-                
-                const dragIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
-                const groupBadge = group ? '<span style="padding:2px 8px;background:var(--primary-dim);color:var(--primary);border-radius:4px;font-size:0.7rem;font-weight:600;">' + group + '</span>' : '';
-                const cookieHealth = cookieHealthCache[uid];
-                const cookieBadge = cookieHealth ? (cookieHealth.valid ? '<span style="padding:2px 6px;background:rgba(16,185,129,0.15);color:var(--success);border-radius:4px;font-size:0.65rem;font-weight:600;">✓</span>' : '<span style="padding:2px 6px;background:rgba(239,68,68,0.15);color:var(--danger);border-radius:4px;font-size:0.65rem;font-weight:600;">✗</span>') : '';
-                
-                row.innerHTML = '<div class="row-header"><input type="checkbox" class="account-checkbox" ' + (isSelected?'checked':'') + ' onchange="toggleAccountSelection(\'' + uid + '\', this.checked)" style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer;" title="Select for bulk actions"><div class="drag-handle" title="Drag to reorder">' + dragIcon + '</div><img src="' + getAvatar(uid) + '" style="width:40px; height:40px; border-radius:50%;"><div style="flex:1;"><div style="font-weight:700;display:flex;align-items:center;gap:8px;">' + (d.username || 'Unknown') + cookieBadge + '</div><div style="font-size:0.75rem; color:#666;">' + uid + '</div></div><select style="padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.8rem;cursor:pointer;" onchange="upd(\'' + uid + '\',\'group\',this.value);renderConfig();" title="Account Group"><option value=""' + (!group?' selected':'') + '>No Group</option><option value="Main"' + (group==='Main'?' selected':'') + '>Main</option><option value="Alts"' + (group==='Alts'?' selected':'') + '>Alts</option><option value="Farm"' + (group==='Farm'?' selected':'') + '>Farm</option></select><div class="status-dot ' + status.class + '" style="position:relative;top:0;right:0;">' + status.text + '</div><label class="toggle-label"><input type="checkbox" ' + (d.autoRelaunch?'checked':'') + ' onchange="upd(\'' + uid + '\',\'autoRelaunch\',this.checked)"><span style="font-weight:600; font-size:0.9rem;">Auto-Relaunch</span></label><button class="btn btn-ghost" style="width:auto; padding:8px 10px; font-size:0.75rem;" onclick="showAccountHealth(\'' + uid + '\')" title="View account health">ℹ️</button><button class="btn btn-primary" style="width:auto; padding:8px 12px; font-size:0.8rem;" onclick="joinGame(\'' + uid + '\')" title="Launch Roblox">🎮 Join</button><button class="btn btn-danger" style="width:auto; padding:8px 12px; font-size:0.8rem;" onclick="deleteAccount(\'' + uid + '\')">Remove</button></div><div class="row-body"><div><span class="input-label">Place ID</span><input value="' + (d.placeId||'') + '" onchange="upd(\'' + uid + '\',\'placeId\',this.value)"></div><div><span class="input-label">Job ID (optional)</span><input value="' + (d.jobId||'') + '" onchange="upd(\'' + uid + '\',\'jobId\',this.value)" placeholder="Leave empty for random server"></div><div class="row-full"><span class="input-label">Cookie</span><input type="password" value="' + (d.cookie||'') + '" onchange="upd(\'' + uid + '\',\'cookie\',this.value)"></div></div>';
-                
-                row.ondragover = function(e) { handleDragOver(e, row); };
-                row.ondragleave = function(e) { handleDragLeave(e, row); };
-                row.ondrop = function(e) { handleDrop(e, row); };
-                
-                list.appendChild(row);
-                
-                const handle = row.querySelector('.drag-handle');
-                if (handle) {
-                    handle.draggable = true;
-                    handle.ondragstart = function(e) { handleDragStart(e, row); };
-                    handle.ondragend = function(e) { handleDragEnd(e, row); };
-                }
-            });
-            
-            updateSelectedCount();
-        }
-        
-        function toggleAccountSelection(uid, checked) {
-            if (checked) selectedAccounts.add(uid);
-            else selectedAccounts.delete(uid);
-            updateSelectedCount();
-        }
-        
-        function toggleSelectAllAccounts() {
-            const allCheckbox = document.getElementById('select-all-accounts');
-            const checkboxes = document.querySelectorAll('.account-checkbox');
-            checkboxes.forEach(cb => {
-                cb.checked = allCheckbox.checked;
-                const uid = cb.closest('.config-row').getAttribute('data-uid');
-                if (allCheckbox.checked) selectedAccounts.add(uid);
-                else selectedAccounts.delete(uid);
-            });
-            updateSelectedCount();
-        }
-        
-        function updateSelectedCount() {
-            document.getElementById('selected-count').textContent = selectedAccounts.size + ' selected';
-        }
-        
-        function filterByGroup(group, btn) {
-            currentGroupFilter = group;
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            selectedAccounts.clear();
-            document.getElementById('select-all-accounts').checked = false;
-            renderConfig();
-        }
-        
-        function bulkSetGroup() {
-            const group = document.getElementById('bulk-group').value;
-            if (selectedAccounts.size === 0) return showToast('Select accounts first', 'error');
-            selectedAccounts.forEach(uid => {
-                if (savedAccounts[uid]) {
-                    savedAccounts[uid].group = group;
-                    upd(uid, 'group', group);
-                }
-            });
-            showToast('Group updated for ' + selectedAccounts.size + ' account(s)', 'success');
-            renderConfig();
-        }
-        
-        function bulkLaunchSelected() {
-            if (selectedAccounts.size === 0) return showToast('Select accounts first', 'error');
-            let launched = 0;
-            selectedAccounts.forEach(uid => {
-                if (savedAccounts[uid] && savedAccounts[uid].placeId) {
-                    fetch('/launch-game', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: uid })
-                    });
-                    launched++;
-                }
-            });
-            showToast('Launching ' + launched + ' account(s)...', 'success');
-        }
-        
-        function showBulkPlaceModal() {
-            if (selectedAccounts.size === 0) return showToast('Select accounts first', 'error');
-            showModal({
-                title: 'Set Place ID for ' + selectedAccounts.size + ' account(s)',
-                input: 'Enter Place ID...',
-                confirmText: 'Apply',
-                onConfirm: function(placeId) {
-                    if (!placeId) return;
-                    selectedAccounts.forEach(uid => {
-                        if (savedAccounts[uid]) {
-                            savedAccounts[uid].placeId = placeId;
-                            upd(uid, 'placeId', placeId);
-                        }
-                    });
-                    showToast('Place ID set for ' + selectedAccounts.size + ' account(s)', 'success');
-                    renderConfig();
-                }
-            });
-        }
-        
-        var draggedElement = null;
-        
-        function handleDragStart(e, row) {
-            draggedElement = row;
-            row.classList.add('dragging');
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', row.getAttribute('data-uid'));
-        }
-        
-        function handleDragEnd(e, row) {
-            row.classList.remove('dragging');
-            document.querySelectorAll('.config-row').forEach(function(r) {
-                r.classList.remove('drag-over');
-            });
-            draggedElement = null;
-        }
-        
-        function handleDragOver(e, row) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            if (row !== draggedElement) {
-                row.classList.add('drag-over');
-            }
-        }
-        
-        function handleDragLeave(e, row) {
-            row.classList.remove('drag-over');
-        }
-        
-        function handleDrop(e, row) {
-            e.preventDefault();
-            row.classList.remove('drag-over');
-            
-            if (!draggedElement || row === draggedElement) return;
-            
-            const draggedUid = draggedElement.getAttribute('data-uid');
-            const targetUid = row.getAttribute('data-uid');
-            
-            const draggedIdx = accountOrder.indexOf(draggedUid);
-            const targetIdx = accountOrder.indexOf(targetUid);
-            
-            if (draggedIdx > -1 && targetIdx > -1) {
-                accountOrder.splice(draggedIdx, 1);
-                accountOrder.splice(targetIdx, 0, draggedUid);
-                
-                fetch('/save-order', {
+        if (res.status === 403) {
+            const csrf = res.headers?.get('x-csrf-token');
+            if (csrf) {
+                res = await fetch("https://auth.roblox.com/v1/authentication-ticket", {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ order: accountOrder })
+                    headers: { ...headers, 'X-CSRF-TOKEN': csrf }
                 });
+            }
+        }
+        return res.headers?.get('rbx-authentication-ticket') || null;
+    } catch (e) { 
+        console.error('Auth ticket error:', e.message);
+        return null; 
+    }
+}
+
+app.get('/avatar/:id', async (req, res) => {
+    try {
+        const apiRes = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${req.params.id}&size=150x150&format=Png&isCircular=true`);
+        const data = await apiRes.json();
+        if (data.data?.[0]?.imageUrl) return res.redirect(data.data[0].imageUrl);
+        throw new Error();
+    } catch {
+        res.redirect("https://tr.rbxcdn.com/5300d80c057088c9191d9039d997235f/150/150/AvatarHeadshot/Png");
+    }
+});
+
+app.post('/heartbeat', (req, res) => {
+    const { userId, username, ping, ram } = req.body;
+    const strId = userId.toString();
+
+    if (!clients[strId]) {
+        clients[strId] = {
+            data: { userId, username, ping, ram },
+            lastSeen: Date.now(),
+            connectedAt: Date.now(),
+            terminate: false,
+            commandQueue: [],
+            useWebSocket: false
+        };
+    } else {
+        clients[strId].data = { userId, username, ping, ram };
+        clients[strId].lastSeen = Date.now();
+    }
+
+    const nextScript = clients[strId].commandQueue.shift();
+    emitClientUpdate();
+    
+    const response = { 
+        kill: clients[strId].terminate, 
+        script: nextScript,
+        spyEnabled: globalSettings.spyEnabled
+    };
+    
+    if (clients[strId].pendingTrim) {
+        response.trimRAM = true;
+        response.trimTargetMB = clients[strId].pendingTrim.targetMB;
+        delete clients[strId].pendingTrim;
+    }
+    
+    res.json(response);
+});
+
+app.post('/log', (req, res) => {
+    const { userId, msg, type } = req.body;
+    io.emit('newLog', { 
+        userId, 
+        msg, 
+        type, 
+        timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }) 
+    });
+    res.sendStatus(200);
+});
+
+app.post('/spy', (req, res) => {
+    handleSpyData(req.body);
+    res.sendStatus(200);
+});
+
+app.get('/spy/:userId', (req, res) => {
+    const strId = req.params.userId;
+    res.json(remoteSpyData[strId] || { Outgoing: {}, Incoming: {} });
+});
+
+app.post('/spy/clear/:userId', (req, res) => {
+    const strId = req.params.userId;
+    remoteSpyData[strId] = { Outgoing: {}, Incoming: {} };
+    io.emit('spyCleared', strId);
+    res.sendStatus(200);
+});
+
+app.post('/execute', (req, res) => {
+    const { targets, script } = req.body;
+    const targetIds = targets === "all" ? Object.keys(clients) : (Array.isArray(targets) ? targets : []);
+    
+    targetIds.forEach(id => {
+        if (!clients[id]) return;
+        
+        if (clients[id].useWebSocket && sendScriptToWsClient(id, script)) {
+        } else {
+            clients[id].commandQueue.push(script);
+        }
+    });
+    
+    res.sendStatus(200);
+});
+
+app.get('/settings', (req, res) => res.json(globalSettings));
+app.post('/settings', (req, res) => { 
+    const oldAutoTrimEnabled = globalSettings.autoTrimEnabled;
+    const oldInterval = globalSettings.autoTrimIntervalSeconds;
+    
+    globalSettings = { ...globalSettings, ...req.body }; 
+    saveSettings(); 
+    io.emit('settingsUpdated', globalSettings);
+    
+    if (globalSettings.autoTrimEnabled !== oldAutoTrimEnabled || 
+        globalSettings.autoTrimIntervalSeconds !== oldInterval) {
+        startAutoTrim();
+    }
+    
+    res.sendStatus(200); 
+});
+
+app.get('/scripts', (req, res) => res.json(savedScripts));
+
+app.post('/scripts/save', (req, res) => {
+    const { id, name, code, category } = req.body;
+    if (!name || !code) return res.status(400).json({ error: 'Name and code required' });
+    
+    const scriptId = id || Date.now().toString();
+    savedScripts[scriptId] = { 
+        name, 
+        code, 
+        category: category || 'General',
+        createdAt: savedScripts[scriptId]?.createdAt || Date.now(),
+        updatedAt: Date.now()
+    };
+    saveScripts();
+    io.emit('scriptsUpdated', savedScripts);
+    res.json({ success: true, id: scriptId });
+});
+
+app.delete('/scripts/:id', (req, res) => {
+    const { id } = req.params;
+    if (savedScripts[id]) {
+        delete savedScripts[id];
+        saveScripts();
+        io.emit('scriptsUpdated', savedScripts);
+        res.json({ success: true });
+    } else {
+        res.status(404).json({ error: 'Script not found' });
+    }
+});
+
+function getStartupFolder() {
+    return path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+}
+
+function getStartupShortcutPath() {
+    return path.join(getStartupFolder(), 'ByorlControl.vbs');
+}
+
+function isInStartup() {
+    return fs.existsSync(getStartupShortcutPath());
+}
+
+app.get('/startup/status', (req, res) => {
+    res.json({ 
+        enabled: isInStartup(),
+        scriptPath: globalSettings.scriptPath || ''
+    });
+});
+
+app.post('/startup/add', (req, res) => {
+    const { scriptPath } = req.body;
+    
+    if (!scriptPath) {
+        return res.status(400).json({ error: 'Script path is required' });
+    }
+    
+    const normalizedPath = path.resolve(scriptPath);
+    
+    if (!fs.existsSync(normalizedPath)) {
+        return res.status(400).json({ error: 'Script file does not exist at specified path' });
+    }
+    
+    if (isInStartup()) {
+        return res.status(400).json({ error: 'Already added to startup. Remove first before adding again.' });
+    }
+    
+    try {
+        const vbsContent = `Set WshShell = CreateObject("WScript.Shell")
+WshShell.CurrentDirectory = "${path.dirname(normalizedPath).replace(/\\/g, '\\\\')}"
+WshShell.Run "cmd /c node ""${normalizedPath.replace(/\\/g, '\\\\')}""", 0, False`;
+        
+        fs.writeFileSync(getStartupShortcutPath(), vbsContent);
+        
+        globalSettings.startupEnabled = true;
+        globalSettings.scriptPath = normalizedPath;
+        saveSettings();
+        
+        res.json({ success: true, message: 'Added to startup successfully' });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to add to startup: ' + e.message });
+    }
+});
+
+app.post('/startup/remove', (req, res) => {
+    try {
+        const shortcutPath = getStartupShortcutPath();
+        if (fs.existsSync(shortcutPath)) {
+            fs.unlinkSync(shortcutPath);
+        }
+        
+        globalSettings.startupEnabled = false;
+        saveSettings();
+        
+        res.json({ success: true, message: 'Removed from startup' });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to remove from startup: ' + e.message });
+    }
+});
+
+app.get('/export-config', (req, res) => {
+    const exportData = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        accounts: savedAccounts,
+        accountOrder: accountOrder,
+        settings: globalSettings,
+        scripts: savedScripts
+    };
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename=byorl-backup.json');
+    res.json(exportData);
+});
+
+app.post('/import-config', (req, res) => {
+    try {
+        const { accounts, accountOrder: order, settings, scripts } = req.body;
+        
+        if (accounts) {
+            Object.assign(savedAccounts, accounts);
+            saveConfig();
+        }
+        if (order && Array.isArray(order)) {
+            accountOrder = order;
+            saveAccountOrder();
+        }
+        if (settings) {
+            globalSettings = { ...globalSettings, ...settings };
+            saveSettings();
+        }
+        if (scripts) {
+            Object.assign(savedScripts, scripts);
+            saveScripts();
+        }
+        
+        io.emit('updateConfig', savedAccounts);
+        io.emit('settingsUpdated', globalSettings);
+        io.emit('scriptsUpdated', savedScripts);
+        
+        res.json({ success: true, message: 'Config imported successfully' });
+    } catch (e) {
+        res.status(400).json({ error: 'Failed to import: ' + e.message });
+    }
+});
+
+app.post('/launch-game', async (req, res) => {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'User ID required' });
+    
+    const acc = savedAccounts[userId];
+    if (!acc) return res.status(404).json({ error: 'Account not found' });
+    if (!acc.placeId) return res.status(400).json({ error: 'No Place ID configured for this account' });
+    
+    try {
+        await launchRoblox(userId);
+        res.json({ success: true, message: 'Game launch initiated' });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to launch: ' + e.message });
+    }
+});
+
+app.post('/trim-ram', (req, res) => {
+    const { targetMB } = req.body;
+    const target = targetMB || globalSettings.autoTrimTargetMB || 750;
+    
+    const clientIds = Object.keys(clients);
+    
+    if (clientIds.length === 0) {
+        return res.json({ success: true, clientCount: 0, message: 'No clients connected' });
+    }
+    
+    clientIds.forEach(id => {
+        sendTrimCommand(id, target);
+    });
+    
+    res.json({ success: true, clientCount: clientIds.length });
+});
+
+function sendTrimCommand(userId, targetMB) {
+    const ws = wsClients.get(userId);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'trim', trimRAM: true, trimTargetMB: targetMB }));
+        return true;
+    }
+    if (clients[userId]) {
+        clients[userId].pendingTrim = { targetMB };
+    }
+    return false;
+}
+
+let autoTrimInterval = null;
+
+function startAutoTrim() {
+    if (autoTrimInterval) clearInterval(autoTrimInterval);
+    
+    if (!globalSettings.autoTrimEnabled) {
+        console.log('Auto RAM trim disabled');
+        return;
+    }
+    
+    const intervalMs = (globalSettings.autoTrimIntervalSeconds || 60) * 1000;
+    const targetMB = globalSettings.autoTrimTargetMB || 750;
+    
+    autoTrimInterval = setInterval(() => {
+        if (!globalSettings.autoTrimEnabled) return;
+        
+        const clientIds = Object.keys(clients);
+        if (clientIds.length === 0) return;
+        
+        clientIds.forEach(id => {
+            sendTrimCommand(id, targetMB);
+        });
+        
+        console.log(`Auto RAM trim sent to ${clientIds.length} client(s) (target: ${targetMB}MB)`);
+    }, intervalMs);
+    
+    console.log(`Auto RAM trim enabled (every ${globalSettings.autoTrimIntervalSeconds}s, target: ${globalSettings.autoTrimTargetMB}MB)`);
+}
+
+if (globalSettings.autoTrimEnabled) {
+    startAutoTrim();
+}
+
+function cleanCookie(rawCookie) {
+    if (!rawCookie) return null;
+    let cookie = rawCookie.trim();
+    
+    if (cookie.startsWith('.ROBLOSECURITY=')) {
+        cookie = cookie.substring('.ROBLOSECURITY='.length);
+    }
+    if (cookie.startsWith('_|WARNING:-DO-NOT-SHARE-THIS')) {
+    }
+    
+    const semicolonIdx = cookie.indexOf(';');
+    if (semicolonIdx !== -1) {
+        cookie = cookie.substring(0, semicolonIdx);
+    }
+    
+    return cookie.trim();
+}
+
+async function getUserInfoFromCookie(cookie) {
+    try {
+        const cleanedCookie = cleanCookie(cookie);
+        if (!cleanedCookie) return null;
+        
+        const headers = {
+            'Cookie': `.ROBLOSECURITY=${cleanedCookie}`,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        };
+        
+        console.log('Fetching user info...');
+        const res = await fetch('https://users.roblox.com/v1/users/authenticated', { headers });
+        console.log('Response status:', res.status);
+        
+        if (!res.ok) {
+            console.log('Failed to authenticate, status:', res.status);
+            return null;
+        }
+        
+        const data = await res.json();
+        console.log('User data:', data);
+        
+        if (!data.id || !data.name) {
+            console.log('Missing id or name in response');
+            return null;
+        }
+        
+        return { userId: data.id.toString(), username: data.name, cleanedCookie };
+    } catch (e) {
+        console.error('Failed to get user info:', e.message);
+        return null;
+    }
+}
+
+const pending2FA = {};
+
+async function loginWithCredentials(username, password) {
+    const headers = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.roblox.com/'
+    };
+    
+    try {
+        let csrfRes = await fetch('https://auth.roblox.com/v2/login', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({})
+        });
+        
+        const csrf = csrfRes.headers.get('x-csrf-token');
+        if (csrf) headers['X-CSRF-TOKEN'] = csrf;
+        
+        const loginRes = await fetch('https://auth.roblox.com/v2/login', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                ctype: 'Username',
+                cvalue: username,
+                password: password
+            })
+        });
+        
+        const data = await loginRes.json();
+        
+        if (loginRes.status === 403 && data.errors) {
+            const challengeError = data.errors.find(e => 
+                e.message?.includes('Challenge') || 
+                e.message?.includes('captcha') ||
+                e.code === 2
+            );
+            
+            if (challengeError) {
+                return { 
+                    error: 'Roblox requires captcha verification. Please use the Cookie method instead - login via browser and copy your .ROBLOSECURITY cookie.' 
+                };
+            }
+            
+            const twoStepError = data.errors.find(e => e.code === 0 && e.message?.includes('TwoStepVerification'));
+            if (twoStepError || data.errors.some(e => e.code === 4)) {
+                const challengeId = loginRes.headers.get('rblx-challenge-id');
+                const challengeType = loginRes.headers.get('rblx-challenge-type');
+                const challengeMetadata = loginRes.headers.get('rblx-challenge-metadata');
                 
-                renderConfig();
-            }
-        }
-        
-        function deleteAccount(userId) {
-            var account = savedAccounts[userId];
-            var name = account ? (account.username || userId) : userId;
-            showModal({
-                title: 'Remove Account',
-                message: 'Are you sure you want to remove "' + name + '" from the account list?',
-                confirmText: 'Remove',
-                confirmClass: 'danger',
-                onConfirm: function() {
-                    fetch('/delete-account/' + userId, { method: 'DELETE' })
-                        .then(function(r) { return r.json(); })
-                        .then(function(data) {
-                            if (data.error) return showToast(data.error, "error");
-                            showToast("Account removed", "success");
-                        });
+                let metadata = {};
+                if (challengeMetadata) {
+                    try { metadata = JSON.parse(Buffer.from(challengeMetadata, 'base64').toString()); } catch(e) {}
                 }
-            });
-        }
-
-        function renderTargets(type, clients) {
-            const container = document.getElementById(`${type}-target-list`);
-            const selectionList = execTargets;
-            const currentIds = clients.map(c => c.userId.toString());
-            
-            const emptyMsg = container.querySelector('.empty-message');
-            if(clients.length === 0) { if(!emptyMsg) container.innerHTML = '<div class="empty-message">No clients</div>'; } 
-            else if(emptyMsg) emptyMsg.remove();
-
-            Array.from(container.children).forEach(el => {
-                if(!el.classList.contains('empty-message') && !currentIds.includes(el.id.replace(`${type}-t-`,''))) el.remove();
-            });
-
-            clients.forEach(c => {
-                let el = document.getElementById(`${type}-t-${c.userId}`);
-                if(!el) {
-                    el = document.createElement('div'); el.className = 'player-pill'; el.id = `${type}-t-${c.userId}`;
-                    el.onclick = () => toggleTarget(type, c.userId.toString());
-                    el.innerHTML = `<img src="${getAvatar(c.userId)}" class="pill-avatar"><div class="pill-info"><div class="pill-name">${c.username}</div><div class="pill-id">${c.userId}</div></div>`;
-                    container.appendChild(el);
-                }
-                if(selectionList.includes(c.userId.toString())) el.classList.add('selected'); else el.classList.remove('selected');
-            });
-        }
-
-        function updateExecButton() {
-            const btn = document.getElementById('exec-btn');
-            if (execTargets.length > 0) {
-                btn.textContent = `Execute Script (${execTargets.length})`;
-            } else {
-                btn.textContent = 'Execute Script';
-            }
-        }
-
-        function toggleTarget(type, id) {
-            if(execTargets.includes(id)) execTargets = execTargets.filter(t => t !== id); 
-            else execTargets.push(id);
-            renderTargets(type, activeClients);
-            renderLogs();
-            updateExecButton();
-        }
-
-        function toggleSelectAll(type) {
-            execTargets = execTargets.length === activeClients.length ? [] : activeClients.map(c => c.userId.toString());
-            renderTargets(type, activeClients);
-            renderLogs();
-            updateExecButton();
-        }
-
-        function insertTemplate() { if(editor) editor.setValue(`local Players = game:GetService("Players")\nlocal me = Players.LocalPlayer\n\nprint("Hello from " .. me.Name)`); }
-        function execScript() { if(!editor) return; const script = editor.getValue(); if(execTargets.length === 0) return showToast("Select at least one client!", "error"); fetch('/execute', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({targets:execTargets, script})}); showToast("Script sent!", "success"); }
-        
-        function execEcoMode() { 
-            if(!editor) return;
-            if(execTargets.length === 0) return showToast("Select at least one client!", "error");
-            const ecoScript = `-- Eco Mode: Reduces CPU/GPU usage for multi-account setups
-game:GetService("RunService"):Set3dRenderingEnabled(false)
-if setfpscap then setfpscap(5) end
-settings().Rendering.QualityLevel = 1
-print(":: ECO MODE ENABLED ::")`;
-            fetch('/execute', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({targets:execTargets, script:ecoScript})});
-            showToast("Eco Mode enabled on " + execTargets.length + " client(s)", "success");
-        }
-        
-        function showModal(options) {
-            var container = document.getElementById('modal-container');
-            var title = options.title || 'Confirm';
-            var message = options.message || '';
-            var input = options.input || '';
-            var inputValue = options.inputValue || '';
-            var confirmText = options.confirmText || 'Confirm';
-            var cancelText = options.cancelText || 'Cancel';
-            var confirmClass = options.confirmClass || 'primary';
-            
-            var html = '<div class="modal-overlay" id="modal-overlay">' +
-                '<div class="modal-box">' +
-                '<div class="modal-title">' + title + '</div>' +
-                (message ? '<div class="modal-text">' + message + '</div>' : '') +
-                (input ? '<input type="text" class="modal-input" id="modal-input" placeholder="' + input + '" value="' + inputValue + '">' : '') +
-                '<div class="modal-buttons">' +
-                '<button class="modal-btn ghost" id="modal-cancel">' + cancelText + '</button>' +
-                '<button class="modal-btn ' + confirmClass + '" id="modal-confirm">' + confirmText + '</button>' +
-                '</div></div></div>';
-            
-            container.innerHTML = html;
-            
-            var overlay = document.getElementById('modal-overlay');
-            var confirmBtn = document.getElementById('modal-confirm');
-            var cancelBtn = document.getElementById('modal-cancel');
-            var inputEl = document.getElementById('modal-input');
-            
-            overlay.onclick = function(e) { if(e.target === overlay) closeModal(); };
-            cancelBtn.onclick = function() { closeModal(); };
-            
-            confirmBtn.onclick = function() {
-                var value = inputEl ? inputEl.value.trim() : true;
-                closeModal();
-                if (options.onConfirm) options.onConfirm(value);
-            };
-            
-            if (inputEl) {
-                inputEl.focus();
-                inputEl.onkeydown = function(e) {
-                    if (e.key === 'Enter') confirmBtn.click();
-                    if (e.key === 'Escape') closeModal();
+                
+                return { 
+                    requires2FA: true, 
+                    challengeId,
+                    challengeType,
+                    userId: metadata.userId,
+                    username
                 };
             }
         }
         
-        function closeModal() {
-            document.getElementById('modal-container').innerHTML = '';
-        }
-        
-        let scriptLibrary = {};
-        let currentScriptFilter = '';
-        
-        function filterScripts(category, btn) {
-            currentScriptFilter = category;
-            btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            renderScriptLibrary();
-        }
-        
-        function renderScriptLibrary() {
-            const container = document.getElementById('script-library');
-            let scripts = Object.entries(scriptLibrary);
+        if (!loginRes.ok) {
+            let errorMsg = data.errors?.[0]?.message || 'Login failed';
             
-            if (currentScriptFilter) {
-                scripts = scripts.filter(([id, s]) => s.category === currentScriptFilter);
+            if (errorMsg.includes('Challenge')) {
+                errorMsg = 'Roblox requires captcha verification. Please use the Cookie method instead.';
             }
             
-            if (scripts.length === 0) {
-                container.innerHTML = '<div class="empty-message">No scripts' + (currentScriptFilter ? ' in ' + currentScriptFilter : '') + '</div>';
-                return;
+            return { error: errorMsg };
+        }
+        
+        const cookies = loginRes.headers.raw()['set-cookie'] || [];
+        let roblosecurity = null;
+        
+        for (const cookie of cookies) {
+            if (cookie.includes('.ROBLOSECURITY=')) {
+                const match = cookie.match(/\.ROBLOSECURITY=([^;]+)/);
+                if (match) roblosecurity = match[1];
             }
-            
-            container.innerHTML = scripts.map(([id, s]) => `
-                <div class="script-item" onclick="loadScript('${id}')">
-                    <span class="script-name">${escapeHtml(s.name)}</span>
-                    <span style="font-size:0.6rem;color:var(--text-muted);padding:2px 5px;background:var(--bg);border-radius:3px;">${s.category || 'General'}</span>
-                    <div class="script-actions">
-                        <button class="script-btn" onclick="event.stopPropagation(); runScript('${id}')" title="Run">▶</button>
-                        <button class="script-btn delete" onclick="event.stopPropagation(); deleteScript('${id}')" title="Delete">✕</button>
-                    </div>
-                </div>
-            `).join('');
         }
         
-        function saveCurrentScript() {
-            if (!editor) return;
-            const code = editor.getValue().trim();
-            if (!code) return showToast("Editor is empty!", "error");
-            
-            const container = document.getElementById('modal-container');
-            container.innerHTML = `
-                <div class="modal-overlay" id="modal-overlay">
-                    <div class="modal-box">
-                        <div class="modal-title">Save Script</div>
-                        <input type="text" class="modal-input" id="script-name-input" placeholder="Script name...">
-                        <select id="script-category-input" style="width:100%;padding:12px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;margin-bottom:20px;">
-                            <option value="General">General</option>
-                            <option value="Farm">Farm</option>
-                            <option value="Utility">Utility</option>
-                        </select>
-                        <div class="modal-buttons">
-                            <button class="modal-btn ghost" onclick="closeModal()">Cancel</button>
-                            <button class="modal-btn primary" onclick="doSaveScript()">Save</button>
-                        </div>
-                    </div>
-                </div>`;
-            document.getElementById('script-name-input').focus();
+        if (!roblosecurity) {
+            return { error: 'Login succeeded but no cookie received' };
         }
         
-        function doSaveScript() {
-            const name = document.getElementById('script-name-input').value.trim();
-            const category = document.getElementById('script-category-input').value;
-            const code = editor.getValue().trim();
-            
-            if (!name) return showToast("Name is required!", "error");
-            closeModal();
-            
-            fetch('/scripts/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, code, category })
-            }).then(r => r.json()).then(data => {
-                if (data.error) return showToast(data.error, "error");
-                showToast("Script saved!", "success");
-            });
-        }
+        return { 
+            success: true, 
+            cookie: roblosecurity,
+            userId: data.user?.id?.toString(),
+            username: data.user?.name || username
+        };
         
-        function loadScript(id) {
-            if (!editor || !scriptLibrary[id]) return;
-            editor.setValue(scriptLibrary[id].code);
-            showToast("Loaded: " + scriptLibrary[id].name, "info");
-        }
-        
-        function runScript(id) {
-            if (!scriptLibrary[id]) return;
-            if (execTargets.length === 0) return showToast("Select at least one client!", "error");
-            fetch('/execute', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ targets: execTargets, script: scriptLibrary[id].code })
-            });
-            showToast("Running: " + scriptLibrary[id].name, "success");
-        }
-        
-        function deleteScript(id) {
-            var scriptName = scriptLibrary[id] ? scriptLibrary[id].name : 'this script';
-            showModal({
-                title: 'Delete Script',
-                message: 'Are you sure you want to delete "' + scriptName + '"?',
-                confirmText: 'Delete',
-                confirmClass: 'danger',
-                onConfirm: function() {
-                    fetch('/scripts/' + id, { method: 'DELETE' }).then(function(r) { return r.json(); }).then(function(data) {
-                        if (data.error) return showToast(data.error, "error");
-                        showToast("Script deleted", "success");
-                    });
-                }
-            });
-        }
-        
-        socket.on('scriptsUpdated', function(scripts) {
-            scriptLibrary = scripts;
-            renderScriptLibrary();
+    } catch (e) {
+        console.error('Login error:', e.message);
+        return { error: 'Login request failed: ' + e.message };
+    }
+}
+
+async function verify2FA(username, password, code, challengeId) {
+    const headers = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.roblox.com/'
+    };
+    
+    try {
+        let csrfRes = await fetch('https://auth.roblox.com/v2/login', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({})
         });
-        function setLoginTab(tab) {
-            document.getElementById('tab-cookie').classList.toggle('active', tab === 'cookie');
-            document.getElementById('tab-credentials').classList.toggle('active', tab === 'credentials');
-            document.getElementById('login-cookie').style.display = tab === 'cookie' ? 'flex' : 'none';
-            document.getElementById('login-credentials').style.display = tab === 'credentials' ? 'flex' : 'none';
-            document.getElementById('login-2fa').style.display = 'none';
-        }
+        const csrf = csrfRes.headers.get('x-csrf-token');
+        if (csrf) headers['X-CSRF-TOKEN'] = csrf;
         
-        var pending2FASession = null;
-        
-        function addAccountByCookie() {
-            var cookieInput = document.getElementById('new-cookie');
-            var btn = document.getElementById('add-account-btn');
-            var cookie = cookieInput.value.trim();
-            
-            if (!cookie) return showToast("Please paste a cookie!", "error");
-            
-            btn.disabled = true;
-            btn.textContent = 'Adding...';
-            
-            fetch('/add-account', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cookie: cookie })
-            }).then(function(r) { return r.json(); }).then(function(data) {
-                btn.disabled = false;
-                btn.textContent = 'Add Account';
-                
-                if (data.error) {
-                    showToast(data.error, "error");
-                } else {
-                    showToast("Added: " + data.username, "success");
-                    cookieInput.value = '';
-                }
-            }).catch(function() {
-                btn.disabled = false;
-                btn.textContent = 'Add Account';
-                showToast("Failed to add account", "error");
-            });
-        }
-        
-        function openBrowserLogin() {
-            var loginWindow = window.open('https://www.roblox.com/login', 'RobloxLogin', 'width=500,height=700');
-            
-            showToast("Login in the popup window, then copy your cookie from DevTools (F12 > Application > Cookies > .ROBLOSECURITY)", "info");
-            
-            showModal({
-                title: 'Browser Login Instructions',
-                message: '1. Login to Roblox in the popup window<br>2. After logging in, press F12 to open DevTools<br>3. Go to Application > Cookies > roblox.com<br>4. Find .ROBLOSECURITY and copy its value<br>5. Paste it in the cookie field here',
-                confirmText: 'Got it'
-            });
-        }
-        function kill(userId) { fetch('/terminate', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId})}); }
-        function upd(userId, key, value) { savedAccounts[userId][key]=value; fetch('/update-account', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId,config:{[key]:value}})}); }
-        function saveSettings() { 
-            const timeout = document.getElementById('timeout').value; 
-            const spyEnabled = document.getElementById('remotespy-toggle').checked;
-            const autoTrimEnabled = document.getElementById('autotrim-toggle').checked;
-            const autoTrimTargetMB = parseInt(document.getElementById('autotrim-target').value);
-            const autoTrimIntervalSeconds = parseInt(document.getElementById('autotrim-interval').value) || 60;
-            fetch('/settings', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-                disconnectTimeout: parseInt(timeout), 
-                spyEnabled,
-                autoTrimEnabled,
-                autoTrimTargetMB,
-                autoTrimIntervalSeconds
-            })}).then(()=>showToast("Settings saved!", "success")); 
-        }
-        
-        function joinGame(userId) {
-            const account = savedAccounts[userId];
-            if (!account) return showToast("Account not found", "error");
-            if (!account.placeId) return showToast("Please set a Place ID first", "error");
-            
-            fetch('/launch-game', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId })
-            }).then(r => r.json()).then(data => {
-                if (data.error) return showToast(data.error, "error");
-                showToast("Launching Roblox for " + (account.username || userId), "success");
-            }).catch(() => showToast("Failed to launch game", "error"));
-        }
-        
-        function triggerManualTrim() {
-            if (activeClients.length === 0) return showToast("No clients connected", "error");
-            const targetMB = parseInt(document.getElementById('autotrim-target').value) || 750;
-            fetch('/trim-ram', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ targetMB })
-            }).then(r => r.json()).then(data => {
-                if (data.error) return showToast(data.error, "error");
-                showToast("RAM trim sent to " + data.clientCount + " client(s)", "success");
-            }).catch(() => showToast("Failed to send trim command", "error"));
-        }
-
-        function renderSpyClients(clients) {
-            const container = document.getElementById('spy-target-list');
-            const currentIds = clients.map(c => c.userId.toString());
-            
-            const emptyMsg = container.querySelector('.empty-message');
-            if(clients.length === 0) { if(!emptyMsg) container.innerHTML = '<div class="empty-message">No clients</div>'; } 
-            else if(emptyMsg) emptyMsg.remove();
-
-            Array.from(container.children).forEach(el => {
-                if(!el.classList.contains('empty-message') && !currentIds.includes(el.id.replace('spy-c-',''))) el.remove();
-            });
-
-            clients.forEach(c => {
-                let el = document.getElementById(`spy-c-${c.userId}`);
-                if(!el) {
-                    el = document.createElement('div'); el.className = 'player-pill'; el.id = `spy-c-${c.userId}`;
-                    el.onclick = () => selectSpyClient(c.userId.toString());
-                    el.innerHTML = `<img src="${getAvatar(c.userId)}" class="pill-avatar"><div class="pill-info"><div class="pill-name">${c.username}</div><div class="pill-id">${c.userId}</div></div>`;
-                    container.appendChild(el);
-                }
-                if(spySelectedClient === c.userId.toString()) el.classList.add('selected'); else el.classList.remove('selected');
-            });
-        }
-
-        function selectSpyClient(userId) {
-            spySelectedClient = userId;
-            spySelectedRemote = null;
-            remotesPage = 1; 
-            callsPage = 1;
-            renderSpyClients(activeClients);
-            
-            if (!remoteSpyData[userId]) {
-                fetch(`/spy/${userId}`).then(r => r.json()).then(data => {
-                    remoteSpyData[userId] = data;
-                    renderRemotesList();
-                });
-            } else {
-                renderRemotesList();
-            }
-            renderCallsList();
-        }
-
-        function setSpyTab(tab) {
-            spyTab = tab;
-            spySelectedRemote = null;
-            remotesPage = 1;
-            document.getElementById('tab-outgoing').classList.toggle('active', tab === 'Outgoing');
-            document.getElementById('tab-incoming').classList.toggle('active', tab === 'Incoming');
-            renderRemotesList();
-            renderCallsList();
-        }
-
-        function renderRemotesList() {
-            const container = document.getElementById('remotes-list');
-            
-            if (!spySelectedClient || !remoteSpyData[spySelectedClient]) {
-                container.innerHTML = '<div class="empty-message">Select a client</div>';
-                document.getElementById('remotes-pagination').innerHTML = '';
-                return;
-            }
-            
-            const directionData = remoteSpyData[spySelectedClient][spyTab] || {};
-            
-            const groupedRemotes = {};
-            Object.entries(directionData).forEach(([key, remote]) => {
-                const groupKey = remote.name;
-                if (!groupedRemotes[groupKey]) {
-                    groupedRemotes[groupKey] = {
-                        name: remote.name,
-                        className: remote.className,
-                        path: remote.path,
-                        keys: [key],
-                        totalCalls: remote.calls.length,
-                        calls: [...remote.calls]
-                    };
-                } else {
-                    groupedRemotes[groupKey].keys.push(key);
-                    groupedRemotes[groupKey].totalCalls += remote.calls.length;
-                    groupedRemotes[groupKey].calls.push(...remote.calls);
-                }
-            });
-            
-            const allRemotes = Object.values(groupedRemotes);
-            
-            if (allRemotes.length === 0) {
-                container.innerHTML = `<div class="empty-message">No ${spyTab.toLowerCase()} remotes captured</div>`;
-                document.getElementById('remotes-pagination').innerHTML = '';
-                return;
-            }
-            
-            const totalPages = Math.ceil(allRemotes.length / ITEMS_PER_PAGE);
-            if (remotesPage > totalPages) remotesPage = totalPages;
-            if (remotesPage < 1) remotesPage = 1;
-            const startIdx = (remotesPage - 1) * ITEMS_PER_PAGE;
-            const pageRemotes = allRemotes.slice(startIdx, startIdx + ITEMS_PER_PAGE);
-            
-            container.innerHTML = pageRemotes.map(r => {
-                const isEvent = r.className === 'RemoteEvent' || r.className === 'UnreliableRemoteEvent';
-                const isBindable = r.className === 'BindableEvent' || r.className === 'BindableFunction';
-                const badgeClass = isEvent ? 'event' : (isBindable ? 'bindable' : 'function');
-                const badgeText = isEvent ? 'Event' : (r.className === 'RemoteFunction' ? 'Function' : (r.className === 'BindableEvent' ? 'B.Event' : 'B.Func'));
-                const groupKey = r.name;
-                const selected = spySelectedRemote === groupKey ? 'selected' : '';
-                
-                return `<div class="remote-item ${selected}" onclick="selectRemote('${escapeAttr(groupKey)}')"><div class="remote-header"><span class="remote-type-badge ${badgeClass}">${badgeText}</span><span class="remote-name">${escapeHtml(r.name)}</span><span class="remote-count">x${r.totalCalls}</span></div><div class="remote-path">${escapeHtml(r.path)}</div></div>`;
-            }).join('');
-            
-            generatePagination(remotesPage, totalPages, 'setRemotesPage', 'remotes-pagination');
-        }
-        
-        function setRemotesPage(page) {
-            remotesPage = page;
-            renderRemotesList();
-        }
-
-        function escapeAttr(str) {
-            return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-        }
-
-        function selectRemote(remoteName) {
-            spySelectedRemote = remoteName;
-            callsPage = 1; 
-            renderRemotesList();
-            renderCallsList();
-        }
-
-        function getGroupedCalls() {
-            const directionData = remoteSpyData[spySelectedClient]?.[spyTab] || {};
-            if (!spySelectedClient || !spySelectedRemote) return [];
-            
-            const allCalls = [];
-            Object.entries(directionData).forEach(([key, remote]) => {
-                if (remote.name === spySelectedRemote) {
-                    remote.calls.forEach(call => {
-                        allCalls.push({ ...call, remotePath: remote.path, code: call.code });
-                    });
-                }
-            });
-            
-            allCalls.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-            return allCalls;
-        }
-
-        function renderCallsList() {
-            const container = document.getElementById('calls-list');
-            const paginationContainer = document.getElementById('calls-pagination');
-            
-            if (!spySelectedClient || !spySelectedRemote) {
-                container.innerHTML = '<div class="empty-message">Select a remote</div>';
-                paginationContainer.innerHTML = '';
-                return;
-            }
-            
-            const allCalls = getGroupedCalls();
-            
-            if (allCalls.length === 0) {
-                container.innerHTML = '<div class="empty-message">No calls recorded</div>';
-                paginationContainer.innerHTML = '';
-                return;
-            }
-            
-            const totalPages = Math.ceil(allCalls.length / ITEMS_PER_PAGE);
-            if (callsPage > totalPages) callsPage = totalPages;
-            if (callsPage < 1) callsPage = 1;
-            const startIdx = (callsPage - 1) * ITEMS_PER_PAGE;
-            const pageCalls = allCalls.slice(startIdx, startIdx + ITEMS_PER_PAGE);
-            
-            const callKey = spySelectedRemote;
-            container.innerHTML = pageCalls.map((call, pageIdx) => {
-                const globalIdx = startIdx + pageIdx;
-                const argsPreview = call.args.join(', ').substring(0, 50);
-                const argsHtml = call.args.map((arg, i) => `<div class="arg-row"><span class="arg-index">${i + 1}</span><span class="arg-value">${escapeHtml(arg)}</span></div>`).join('');
-                const isExpanded = expandedCalls.has(`${callKey}_${globalIdx}`);
-                
-                return `<div class="call-item"><div class="call-header" onclick="toggleCall('${escapeAttr(callKey)}', ${globalIdx})"><span class="call-time">${call.timestamp}</span><span class="call-args-preview">${escapeHtml(argsPreview)}${argsPreview.length >= 50 ? '...' : ''}</span></div><div class="call-body ${isExpanded ? 'expanded' : ''}" id="call-body-${globalIdx}">${call.args.length > 0 ? argsHtml : '<div style="color:#555;font-size:0.85rem;">No arguments</div>'}<div class="generated-script">${escapeHtml(call.code)}</div><button class="copy-script-btn" onclick="copyCallScript(${globalIdx})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy Script</button></div></div>`;
-            }).join('');
-            
-            generatePagination(callsPage, totalPages, 'setCallsPage', 'calls-pagination');
-        }
-        
-        function setCallsPage(page) {
-            callsPage = page;
-            renderCallsList();
-        }
-
-        function toggleCall(callKey, idx) {
-            const key = `${callKey}_${idx}`;
-            const body = document.getElementById(`call-body-${idx}`);
-            if (expandedCalls.has(key)) {
-                expandedCalls.delete(key);
-                body.classList.remove('expanded');
-            } else {
-                expandedCalls.add(key);
-                body.classList.add('expanded');
-            }
-        }
-
-        function copyCallScript(idx) {
-            const allCalls = getGroupedCalls();
-            if (allCalls[idx]) {
-                navigator.clipboard.writeText(allCalls[idx].code).then(() => {
-                    showToast('Script copied to clipboard!', 'success');
-                });
-            }
-        }
-
-        function showToast(message, type, duration) {
-            type = type || 'info';
-            duration = duration || 3000;
-            var container = document.getElementById('toast-container');
-            
-            var toasts = container.querySelectorAll('.toast');
-            while (toasts.length >= 3) {
-                toasts[0].remove();
-                toasts = container.querySelectorAll('.toast');
-            }
-            
-            var toast = document.createElement('div');
-            toast.className = 'toast ' + type;
-            var icons = { success: '✓', error: '✕', info: 'ℹ' };
-            toast.innerHTML = '<span class="toast-icon">' + (icons[type] || icons.info) + '</span><span class="toast-message">' + message + '</span><button class="toast-close" onclick="this.parentElement.remove()">×</button>';
-            container.appendChild(toast);
-            setTimeout(function() { 
-                toast.classList.add('hiding'); 
-                setTimeout(function() { toast.remove(); }, 300); 
-            }, duration);
-        }
-
-        function clearRemoteSpy() {
-            if (!spySelectedClient) return;
-            fetch(`/spy/clear/${spySelectedClient}`, {method:'POST'});
-            if (remoteSpyData[spySelectedClient]) {
-                remoteSpyData[spySelectedClient] = { Outgoing: {}, Incoming: {} };
-            }
-            expandedCalls.clear();
-            renderRemotesList();
-            renderCallsList();
-        }
-
-        fetch('/settings').then(r=>r.json()).then(d => {
-            document.getElementById('timeout').value = d.disconnectTimeout;
-            document.getElementById('remotespy-toggle').checked = d.spyEnabled || false;
-            document.getElementById('autotrim-toggle').checked = d.autoTrimEnabled || false;
-            document.getElementById('autotrim-target').value = d.autoTrimTargetMB || 750;
-            document.getElementById('trim-target-display').textContent = d.autoTrimTargetMB || 750;
-            document.getElementById('autotrim-interval').value = d.autoTrimIntervalSeconds || 60;
-            if (d.scriptPath) document.getElementById('startup-path').value = d.scriptPath;
+        const verifyRes = await fetch('https://twostepverification.roblox.com/v1/users/' + challengeId + '/challenges/authenticator/verify', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ code, challengeId })
         });
-        fetch('/get-config').then(r=>r.json()).then(function(d) { 
-            savedAccounts = d.accounts || d; 
-            accountOrder = d.order || Object.keys(savedAccounts);
-            renderConfig(); 
+        
+        if (!verifyRes.ok) {
+            const data = await verifyRes.json();
+            return { error: data.errors?.[0]?.message || 'Invalid 2FA code' };
+        }
+        
+        const verifyData = await verifyRes.json();
+        
+        headers['rblx-challenge-id'] = challengeId;
+        headers['rblx-challenge-type'] = 'twostepverification';
+        headers['rblx-challenge-metadata'] = Buffer.from(JSON.stringify({
+            verificationToken: verifyData.verificationToken,
+            rememberDevice: false,
+            challengeId: challengeId
+        })).toString('base64');
+        
+        const loginRes = await fetch('https://auth.roblox.com/v2/login', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                ctype: 'Username',
+                cvalue: username,
+                password: password
+            })
         });
-        fetch('/scripts').then(r=>r.json()).then(d => { scriptLibrary = d; renderScriptLibrary(); });
-
-        function updateStartupStatus() {
-            fetch('/startup/status').then(r => r.json()).then(data => {
-                const statusEl = document.getElementById('startup-status');
-                const addBtn = document.getElementById('startup-add-btn');
-                const removeBtn = document.getElementById('startup-remove-btn');
-                const pathInput = document.getElementById('startup-path');
-                
-                if (data.enabled) {
-                    statusEl.textContent = 'ENABLED';
-                    statusEl.style.background = 'rgba(16, 185, 129, 0.15)';
-                    statusEl.style.color = 'var(--success)';
-                    addBtn.disabled = true;
-                    addBtn.style.opacity = '0.5';
-                    removeBtn.disabled = false;
-                    removeBtn.style.opacity = '1';
-                } else {
-                    statusEl.textContent = 'DISABLED';
-                    statusEl.style.background = 'rgba(113, 113, 122, 0.15)';
-                    statusEl.style.color = '#71717a';
-                    addBtn.disabled = false;
-                    addBtn.style.opacity = '1';
-                    removeBtn.disabled = true;
-                    removeBtn.style.opacity = '0.5';
-                }
-                
-                if (data.scriptPath) {
-                    pathInput.value = data.scriptPath;
-                }
-            });
+        
+        if (!loginRes.ok) {
+            const data = await loginRes.json();
+            return { error: data.errors?.[0]?.message || '2FA verification failed' };
         }
-
-        function addToStartup() {
-            const scriptPath = document.getElementById('startup-path').value.trim();
-            if (!scriptPath) {
-                showToast('Please enter the full path to your index.js file', 'error');
-                return;
+        
+        const cookies = loginRes.headers.raw()['set-cookie'] || [];
+        let roblosecurity = null;
+        
+        for (const cookie of cookies) {
+            if (cookie.includes('.ROBLOSECURITY=')) {
+                const match = cookie.match(/\.ROBLOSECURITY=([^;]+)/);
+                if (match) roblosecurity = match[1];
             }
-            
-            fetch('/startup/add', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ scriptPath })
-            }).then(r => r.json()).then(data => {
-                if (data.error) {
-                    showToast(data.error, 'error');
-                } else {
-                    showToast(data.message, 'success');
-                    updateStartupStatus();
-                }
-            }).catch(() => showToast('Failed to add to startup', 'error'));
         }
+        
+        if (!roblosecurity) {
+            return { error: '2FA succeeded but no cookie received' };
+        }
+        
+        const data = await loginRes.json();
+        return { 
+            success: true, 
+            cookie: roblosecurity,
+            userId: data.user?.id?.toString(),
+            username: data.user?.name || username
+        };
+        
+    } catch (e) {
+        console.error('2FA error:', e.message);
+        return { error: '2FA verification failed: ' + e.message };
+    }
+}
 
-        function removeFromStartup() {
-            fetch('/startup/remove', { method: 'POST' })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.error) {
-                        showToast(data.error, 'error');
-                    } else {
-                        showToast(data.message, 'success');
-                        updateStartupStatus();
-                    }
-                }).catch(() => showToast('Failed to remove from startup', 'error'));
-        }
+app.post('/add-account', async (req, res) => {
+    const { cookie } = req.body;
+    
+    if (!cookie) {
+        return res.status(400).json({ error: 'Cookie is required' });
+    }
+    
+    const userInfo = await getUserInfoFromCookie(cookie);
+    if (!userInfo) {
+        return res.status(400).json({ error: 'Invalid cookie - make sure you copied the full .ROBLOSECURITY value' });
+    }
+    
+    const { userId, username, cleanedCookie } = userInfo;
+    
+    if (savedAccounts[userId]) {
+        savedAccounts[userId].cookie = cleanedCookie;
+        savedAccounts[userId].username = username;
+    } else {
+        savedAccounts[userId] = { username, placeId: "", jobId: "", cookie: cleanedCookie, autoRelaunch: false };
+    }
+    
+    saveConfig();
+    io.emit('updateConfig', savedAccounts);
+    res.json({ success: true, userId, username });
+});
+app.post('/add-account-credentials', async (req, res) => {
+    const { username, password } = req.body;
+    
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password required' });
+    }
+    
+    const result = await loginWithCredentials(username, password);
+    
+    if (result.error) {
+        return res.status(400).json({ error: result.error });
+    }
+    
+    if (result.requires2FA) {
+        const sessionId = Date.now().toString();
+        pending2FA[sessionId] = { username, password, challengeId: result.userId };
+        
+        setTimeout(() => delete pending2FA[sessionId], 300000);
+        
+        return res.json({ 
+            requires2FA: true, 
+            sessionId,
+            message: 'Enter your 2FA code from your authenticator app'
+        });
+    }
+    
+    const { userId, cookie } = result;
+    
+    if (savedAccounts[userId]) {
+        savedAccounts[userId].cookie = cookie;
+        savedAccounts[userId].username = result.username;
+    } else {
+        savedAccounts[userId] = { username: result.username, placeId: "", jobId: "", cookie, autoRelaunch: false };
+    }
+    
+    saveConfig();
+    io.emit('updateConfig', savedAccounts);
+    res.json({ success: true, userId, username: result.username });
+});
 
-        updateStartupStatus();
+app.post('/verify-2fa', async (req, res) => {
+    const { sessionId, code } = req.body;
+    
+    if (!sessionId || !code) {
+        return res.status(400).json({ error: 'Session ID and code required' });
+    }
+    
+    const session = pending2FA[sessionId];
+    if (!session) {
+        return res.status(400).json({ error: '2FA session expired. Please try logging in again.' });
+    }
+    
+    const result = await verify2FA(session.username, session.password, code, session.challengeId);
+    delete pending2FA[sessionId];
+    
+    if (result.error) {
+        return res.status(400).json({ error: result.error });
+    }
+    
+    const { userId, username, cookie } = result;
+    
+    if (savedAccounts[userId]) {
+        savedAccounts[userId].cookie = cookie;
+        savedAccounts[userId].username = username;
+    } else {
+        savedAccounts[userId] = { username, placeId: "", jobId: "", cookie, autoRelaunch: false };
+    }
+    
+    saveConfig();
+    io.emit('updateConfig', savedAccounts);
+    res.json({ success: true, userId, username });
+});
+
+app.post('/update-account', (req, res) => { 
+    if (savedAccounts[req.body.userId]) { 
+        savedAccounts[req.body.userId] = { ...savedAccounts[req.body.userId], ...req.body.config }; 
+        saveConfig(); 
+    } 
+    res.sendStatus(200); 
+});
+
+app.delete('/delete-account/:userId', (req, res) => {
+    const { userId } = req.params;
+    if (savedAccounts[userId]) {
+        delete savedAccounts[userId];
+        saveConfig();
+        io.emit('updateConfig', savedAccounts);
+        res.json({ success: true });
+    } else {
+        res.status(404).json({ error: 'Account not found' });
+    }
+});
+
+app.post('/terminate', (req, res) => { 
+    if (clients[req.body.userId]) clients[req.body.userId].terminate = true; 
+    res.sendStatus(200); 
+});
+
+app.get('/account-health/:userId', async (req, res) => {
+    const { userId } = req.params;
+    const acc = savedAccounts[userId];
+    if (!acc || !acc.cookie) {
+        return res.json({ valid: false, error: 'No cookie' });
+    }
+    
+    try {
+        const cleanedCookie = cleanCookie(acc.cookie);
+        const headers = {
+            'Cookie': `.ROBLOSECURITY=${cleanedCookie}`,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        };
         
-        let cookieHealthCache = {};
+        const [authRes, userProfileRes, currencyRes] = await Promise.all([
+            fetch('https://users.roblox.com/v1/users/authenticated', { headers }),
+            fetch(`https://users.roblox.com/v1/users/${userId}`, { headers }),
+            fetch(`https://economy.roblox.com/v1/users/${userId}/currency`, { headers })
+        ]);
         
-        function checkAllCookies() {
-            const statusEl = document.getElementById('cookie-status');
-            statusEl.textContent = 'Checking cookies...';
-            statusEl.style.color = 'var(--text-muted)';
-            
-            fetch('/check-all-cookies', { method: 'POST' })
-                .then(r => r.json())
-                .then(results => {
-                    cookieHealthCache = results;
-                    const total = Object.keys(results).length;
-                    const valid = Object.values(results).filter(r => r.valid).length;
-                    const invalid = total - valid;
-                    
-                    if (invalid === 0) {
-                        statusEl.textContent = `✓ All ${total} cookies valid`;
-                        statusEl.style.color = 'var(--success)';
-                    } else {
-                        statusEl.textContent = `⚠ ${invalid}/${total} cookies expired`;
-                        statusEl.style.color = 'var(--danger)';
-                    }
-                    
-                    renderConfig();
-                    showToast(`${valid} valid, ${invalid} expired cookies`, invalid > 0 ? 'error' : 'success');
-                })
-                .catch(() => {
-                    statusEl.textContent = 'Check failed';
-                    statusEl.style.color = 'var(--danger)';
-                });
+        if (!authRes.ok) {
+            return res.json({ valid: false, error: 'Cookie expired or invalid' });
         }
         
-        function showAccountHealth(userId) {
-            const acc = savedAccounts[userId];
-            if (!acc) return;
-            
-            const container = document.getElementById('modal-container');
-            container.innerHTML = `
-                <div class="modal-overlay" id="modal-overlay">
-                    <div class="modal-box" style="min-width:400px;">
-                        <div class="modal-title">Account Health: ${acc.username || userId}</div>
-                        <div id="health-content" style="color:var(--text-muted);font-size:0.9rem;">Loading...</div>
-                        <div class="modal-buttons" style="margin-top:20px;">
-                            <button class="modal-btn ghost" onclick="closeModal()">Close</button>
-                        </div>
-                    </div>
-                </div>`;
-            
-            fetch('/account-health/' + userId)
-                .then(r => r.json())
-                .then(data => {
-                    const content = document.getElementById('health-content');
-                    if (!data.valid) {
-                        content.innerHTML = `<div style="color:var(--danger);font-weight:600;">❌ Cookie Invalid</div><div style="margin-top:10px;">${data.error || 'Cookie expired or invalid'}</div>`;
-                        return;
-                    }
-                    
-                    content.innerHTML = `
-                        <div style="display:grid;gap:15px;">
-                            <div style="display:flex;justify-content:space-between;padding:10px;background:var(--bg);border-radius:8px;">
-                                <span>Cookie Status</span>
-                                <span style="color:var(--success);font-weight:600;">✓ Valid</span>
-                            </div>
-                            <div style="display:flex;justify-content:space-between;padding:10px;background:var(--bg);border-radius:8px;">
-                                <span>Username</span>
-                                <span style="font-weight:600;">${data.username}</span>
-                            </div>
-                            <div style="display:flex;justify-content:space-between;padding:10px;background:var(--bg);border-radius:8px;">
-                                <span>Display Name</span>
-                                <span style="font-weight:600;">${data.displayName || data.username}</span>
-                            </div>
-                            <div style="display:flex;justify-content:space-between;padding:10px;background:var(--bg);border-radius:8px;">
-                                <span>Robux</span>
-                                <span style="color:var(--success);font-weight:600;">R$ ${data.robux.toLocaleString()}</span>
-                            </div>
-                            <div style="display:flex;justify-content:space-between;padding:10px;background:var(--bg);border-radius:8px;">
-                                <span>Account Age</span>
-                                <span style="font-weight:600;">${data.accountAgeDays ? formatAccountAge(data.accountAgeDays) : 'Unknown'}</span>
-                            </div>
-                            <div style="display:flex;justify-content:space-between;padding:10px;background:var(--bg);border-radius:8px;">
-                                <span>Ban Status</span>
-                                <span style="color:${data.isBanned ? 'var(--danger)' : 'var(--success)'};font-weight:600;">${data.isBanned ? '⚠ Banned' : '✓ Not Banned'}</span>
-                            </div>
-                        </div>`;
-                })
-                .catch(() => {
-                    document.getElementById('health-content').innerHTML = '<div style="color:var(--danger);">Failed to fetch account health</div>';
-                });
+        const authData = await authRes.json();
+        let robux = 0;
+        if (currencyRes.ok) {
+            const currencyData = await currencyRes.json();
+            robux = currencyData.robux || 0;
         }
         
-        function exportConfig() {
-            window.location.href = '/export-config';
-            showToast('Downloading backup...', 'info');
+        let accountAge = null;
+        let created = null;
+        let isBanned = false;
+        if (userProfileRes.ok) {
+            const profileData = await userProfileRes.json();
+            created = profileData.created;
+            isBanned = profileData.isBanned || false;
+            if (profileData.created) {
+                const createdDate = new Date(profileData.created);
+                accountAge = Math.floor((Date.now() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+            }
         }
         
-        function importConfig(input) {
-            const file = input.files[0];
-            if (!file) return;
-            
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    if (!data.accounts && !data.settings && !data.scripts) {
-                        return showToast('Invalid backup file', 'error');
-                    }
-                    
-                    fetch('/import-config', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(data)
-                    }).then(r => r.json()).then(result => {
-                        if (result.error) return showToast(result.error, 'error');
-                        showToast('Backup imported successfully!', 'success');
-                        setTimeout(() => location.reload(), 1000);
-                    }).catch(() => showToast('Failed to import backup', 'error'));
-                } catch (err) {
-                    showToast('Invalid JSON file', 'error');
-                }
+        res.json({
+            valid: true,
+            username: authData.name,
+            displayName: authData.displayName,
+            robux: robux,
+            accountAgeDays: accountAge,
+            created: created,
+            isBanned: isBanned
+        });
+    } catch (e) {
+        res.json({ valid: false, error: e.message });
+    }
+});
+
+app.post('/check-all-cookies', async (req, res) => {
+    const results = {};
+    const userIds = Object.keys(savedAccounts);
+    
+    for (const userId of userIds) {
+        const acc = savedAccounts[userId];
+        if (!acc.cookie) {
+            results[userId] = { valid: false, error: 'No cookie' };
+            continue;
+        }
+        
+        try {
+            const cleanedCookie = cleanCookie(acc.cookie);
+            const headers = {
+                'Cookie': `.ROBLOSECURITY=${cleanedCookie}`,
+                'User-Agent': 'Mozilla/5.0'
             };
-            reader.readAsText(file);
-            input.value = '';
+            const userRes = await fetch('https://users.roblox.com/v1/users/authenticated', { headers });
+            results[userId] = { valid: userRes.ok };
+            if (!userRes.ok) results[userId].error = 'Cookie expired';
+        } catch (e) {
+            results[userId] = { valid: false, error: e.message };
         }
-    </script>
-</body>
-</html>
+    }
+    
+    res.json(results);
+});
+
+app.get('/get-config', (req, res) => {
+    accountOrder = accountOrder.filter(id => savedAccounts[id]);
+    Object.keys(savedAccounts).forEach(id => {
+        if (!accountOrder.includes(id)) accountOrder.push(id);
+    });
+    res.json({ accounts: savedAccounts, order: accountOrder });
+});
+
+app.post('/save-order', (req, res) => {
+    const { order } = req.body;
+    if (Array.isArray(order)) {
+        accountOrder = order;
+        saveAccountOrder();
+        res.json({ success: true });
+    } else {
+        res.status(400).json({ error: 'Invalid order' });
+    }
+});
+
+function getClientList() {
+    return Object.values(clients).map(c => {
+        const timeSince = Date.now() - c.lastSeen;
+        const isLagging = timeSince > 10000;
+        const uptime = c.connectedAt ? Date.now() - c.connectedAt : 0;
+        return { 
+            ...c.data, 
+            status: isLagging ? 'unstable' : 'good',
+            uptime: uptime,
+            connectionType: c.useWebSocket ? 'websocket' : 'http'
+        };
+    });
+}
+
+async function launchRoblox(userId) {
+    const acc = savedAccounts[userId];
+    if (!acc || !acc.placeId) return;
+    
+    if (acc.cookie) {
+        const ticket = await getAuthTicket(acc.cookie);
+        if (ticket) {
+            const time = Date.now();
+            const browserId = Math.floor(Math.random() * 100000000000);
+            
+            let placeLauncherParams = `request=RequestGame&browserTrackerId=${browserId}&placeId=${acc.placeId}&isPlayTogetherGame=false`;
+            if (acc.jobId && !acc.jobId.includes("http")) {
+                placeLauncherParams += `&gameInstanceId=${acc.jobId}`;
+            }
+            
+            const encodedPlaceLauncher = encodeURIComponent(`https://assetgame.roblox.com/game/PlaceLauncher.ashx?${placeLauncherParams}`);
+            const launchUrl = `roblox-player:1+launchmode:play+gameinfo:${ticket}+launchtime:${time}+placelauncherurl:${encodedPlaceLauncher}`;
+            
+            exec(`start "" "${launchUrl}"`, (err) => {
+                if (err) console.log(`Launch error for ${userId}:`, err.message);
+            });
+            console.log(`Launching Roblox for ${acc.username} (${userId}) with auth ticket`);
+            return;
+        } else {
+            console.log(`Failed to get auth ticket for ${acc.username} (${userId}) - cookie may be invalid`);
+        }
+    }
+    
+    console.log(`Warning: No cookie for ${acc.username} (${userId}) - launching with browser account`);
+    let launchUrl = `roblox://experiences/start?placeId=${acc.placeId}`;
+    if (acc.jobId) {
+        if (acc.jobId.includes("http")) launchUrl = acc.jobId;
+        else launchUrl += `&gameInstanceId=${acc.jobId}`;
+    }
+    exec(`start "" "${launchUrl}"`);
+}
+
+setInterval(() => {
+    const now = Date.now();
+    let changed = false;
+    for (const id in clients) {
+        const timeSince = now - clients[id].lastSeen;
+        const timeout = Math.max((globalSettings.disconnectTimeout || 30), 20) * 1000;
+        if (timeSince > timeout) {
+            console.log(`Client ${clients[id].data?.username || id} disconnected (no heartbeat for ${Math.round(timeSince/1000)}s)`);
+            if (!clients[id].terminate && savedAccounts[id] && savedAccounts[id].autoRelaunch) {
+                launchRoblox(id);
+            }
+            delete clients[id];
+            delete remoteSpyData[id];
+            changed = true;
+        } else if (timeSince > 10000) changed = true;
+    }
+    if (changed) emitClientUpdate();
+}, 2000);
+
+server.listen(5000, () => { console.log(`BYORL CONTROL running on http://localhost:5000`); });
