@@ -195,6 +195,7 @@
         .drag-handle svg { width: 16px; height: 16px; }
         .config-row.dragging { opacity: 0.5; transform: scale(1.02); box-shadow: 0 10px 40px rgba(139, 92, 246, 0.3); border-color: var(--primary); }
         .config-row.drag-over { border-color: var(--primary); background: var(--primary-dim); }
+        .config-row.selected { border-color: var(--primary); background: rgba(139, 92, 246, 0.05); }
         .config-row { transition: transform 0.2s, opacity 0.2s, border-color 0.2s, background 0.2s; }
     </style>
 </head>
@@ -216,6 +217,10 @@
         <div id="sessions" class="page active">
             <h2>Live Accounts</h2>
             <div class="subtitle">Real-time monitoring of active Roblox instances.</div>
+            <div style="margin-bottom:20px;display:flex;gap:10px;align-items:center;">
+                <button class="btn btn-ghost" style="width:auto;padding:8px 15px;" onclick="checkAllCookies()">🔍 Check All Cookies</button>
+                <span id="cookie-status" style="font-size:0.85rem;color:var(--text-muted);"></span>
+            </div>
             <div id="grid" class="grid"></div>
         </div>
 
@@ -231,6 +236,33 @@
                 <button class="btn btn-ghost" style="width: auto; height: 42px; margin-bottom:1px;" onclick="openBrowserLogin()" title="Login via browser">🌐 Browser Login</button>
             </div>
             
+            <!-- Bulk Actions Bar -->
+            <div class="add-box" style="margin-bottom: 15px; padding: 15px;">
+                <div style="display:flex; align-items:center; gap:10px; flex:1;">
+                    <label class="filter-chk"><input type="checkbox" id="select-all-accounts" onchange="toggleSelectAllAccounts()"> Select All</label>
+                    <span style="color:var(--text-muted); font-size:0.85rem;" id="selected-count">0 selected</span>
+                </div>
+                <select id="bulk-group" style="padding:8px 12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:0.85rem;">
+                    <option value="">Set Group...</option>
+                    <option value="Main">Main</option>
+                    <option value="Alts">Alts</option>
+                    <option value="Farm">Farm</option>
+                    <option value="">No Group</option>
+                </select>
+                <button class="btn btn-ghost" style="width:auto; padding:8px 15px;" onclick="bulkSetGroup()">Apply Group</button>
+                <button class="btn btn-primary" style="width:auto; padding:8px 15px;" onclick="bulkLaunchSelected()">🚀 Launch Selected</button>
+                <button class="btn btn-ghost" style="width:auto; padding:8px 15px;" onclick="showBulkPlaceModal()">Set Place ID</button>
+            </div>
+            
+            <!-- Group Filter -->
+            <div style="margin-bottom: 15px; display:flex; gap:8px; flex-wrap:wrap;">
+                <button class="tab-btn active" onclick="filterByGroup('', this)">All</button>
+                <button class="tab-btn" onclick="filterByGroup('Main', this)">Main</button>
+                <button class="tab-btn" onclick="filterByGroup('Alts', this)">Alts</button>
+                <button class="tab-btn" onclick="filterByGroup('Farm', this)">Farm</button>
+                <button class="tab-btn" onclick="filterByGroup('ungrouped', this)">Ungrouped</button>
+            </div>
+            
             <div id="config-list" class="config-list"></div>
         </div>
 
@@ -244,6 +276,12 @@
                     <div class="targets-list" id="exec-target-list"><div class="empty-message">No clients</div></div>
                     <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border);">
                         <div class="panel-header" style="margin-bottom: 10px;"><div class="panel-title">Script Library</div><button class="select-all-btn" onclick="saveCurrentScript()">+ Save</button></div>
+                        <div style="display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap;">
+                            <button class="tab-btn active" style="padding:4px 8px;font-size:0.7rem;" onclick="filterScripts('', this)">All</button>
+                            <button class="tab-btn" style="padding:4px 8px;font-size:0.7rem;" onclick="filterScripts('General', this)">General</button>
+                            <button class="tab-btn" style="padding:4px 8px;font-size:0.7rem;" onclick="filterScripts('Farm', this)">Farm</button>
+                            <button class="tab-btn" style="padding:4px 8px;font-size:0.7rem;" onclick="filterScripts('Utility', this)">Utility</button>
+                        </div>
                         <div class="targets-list" id="script-library" style="max-height: 200px;"><div class="empty-message">No saved scripts</div></div>
                     </div>
                 </div>
@@ -264,6 +302,8 @@
                         <div class="panel-toolbar">
                             <span style="font-weight:600; font-size:0.9rem;">Output Logs</span>
                             <span class="tool-btn" onclick="clearLogs()">Clear</span>
+                            <input type="text" id="log-search" placeholder="Search logs..." style="width:120px;padding:5px 10px;font-size:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);" oninput="renderLogs()">
+                            <label class="filter-chk"><input type="checkbox" id="chk-autoscroll" checked> Auto-scroll</label>
                             <div class="filter-group">
                                 <label class="filter-chk"><input type="checkbox" id="chk-info" checked onchange="renderLogs()"> Info</label>
                                 <label class="filter-chk"><input type="checkbox" id="chk-warn" checked onchange="renderLogs()"> Warn</label>
@@ -374,6 +414,18 @@
                     </div>
                 </div>
             </div>
+
+            <div class="setting-box" style="margin-top: 25px;">
+                <div style="margin-bottom: 20px;">
+                    <label style="display:block; margin-bottom:10px; font-weight:600;">Backup & Restore</label>
+                    <div style="font-size: 0.85rem; color:#888; margin-bottom:15px;">Export your accounts, settings, and scripts to a backup file, or import from a previous backup.</div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-primary" style="width: auto;" onclick="exportConfig()">📥 Export Backup</button>
+                        <button class="btn btn-ghost" style="width: auto;" onclick="document.getElementById('import-file').click()">📤 Import Backup</button>
+                        <input type="file" id="import-file" accept=".json" style="display:none" onchange="importConfig(this)">
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -435,66 +487,84 @@
             container.innerHTML = html;
         }
         
-        let editor; 
+        let editor = null;
+        let editorLoaded = false;
 
-        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }});
-        require(['vs/editor/editor.main'], function() {
-            monaco.languages.registerCompletionItemProvider('lua', {
-                triggerCharacters: ['.'], 
-                provideCompletionItems: function(model, position) {
-                    const textUntilPosition = model.getValueInRange({ startLineNumber: position.lineNumber, startColumn: 1, endLineNumber: position.lineNumber, endColumn: position.column });
-                    const isMemberAccess = textUntilPosition.endsWith('.');
+        function loadMonacoEditor() {
+            if (editorLoaded) return;
+            editorLoaded = true;
+            
+            require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }});
+            require(['vs/editor/editor.main'], function() {
+                monaco.editor.defineTheme('byorl-dark', { base: 'vs-dark', inherit: true, rules: [{ background: '050505' }], colors: { 'editor.background': '#050505' } });
 
-                    if (isMemberAccess) {
-                        const props = [
-                            { label: 'LocalPlayer', kind: monaco.languages.CompletionItemKind.Property, insertText: 'LocalPlayer' },
-                            { label: 'Name', kind: monaco.languages.CompletionItemKind.Property, insertText: 'Name' },
-                            { label: 'UserId', kind: monaco.languages.CompletionItemKind.Property, insertText: 'UserId' },
-                            { label: 'Character', kind: monaco.languages.CompletionItemKind.Property, insertText: 'Character' },
-                            { label: 'HumanoidRootPart', kind: monaco.languages.CompletionItemKind.Property, insertText: 'HumanoidRootPart' },
-                            { label: 'Connect', kind: monaco.languages.CompletionItemKind.Method, insertText: 'Connect(${1:function})', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet },
-                        ];
-                        return { suggestions: props };
-                    } else {
-                        const globals = [
-                            { label: 'print', kind: monaco.languages.CompletionItemKind.Function, insertText: 'print("${1:msg}")', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet },
-                            { label: 'warn', kind: monaco.languages.CompletionItemKind.Function, insertText: 'warn("${1:msg}")', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet },
-                            { label: 'game', kind: monaco.languages.CompletionItemKind.Class, insertText: 'game' },
-                            { label: 'workspace', kind: monaco.languages.CompletionItemKind.Class, insertText: 'workspace' },
-                            { label: 'Players', kind: monaco.languages.CompletionItemKind.Class, insertText: 'game:GetService("Players")' },
-                            { label: 'ReplicatedStorage', kind: monaco.languages.CompletionItemKind.Class, insertText: 'game:GetService("ReplicatedStorage")' },
-                            { label: 'lp', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'game:GetService("Players").LocalPlayer', documentation: 'Insert LocalPlayer Path' }
-                        ];
-                        return { suggestions: globals };
-                    }
-                }
+                editor = monaco.editor.create(document.getElementById('monaco-container'), {
+                    value: 'print("Connected to Byorl Control")',
+                    language: 'lua',
+                    theme: 'byorl-dark',
+                    automaticLayout: true,
+                    minimap: { enabled: false },
+                    fontSize: 14,
+                    fontFamily: "'JetBrains Mono', 'Courier New', monospace",
+                    letterSpacing: 0,
+                    wordWrap: 'on',
+                    scrollBeyondLastLine: false,
+                    renderWhitespace: 'none',
+                    occurrencesHighlight: false,
+                    selectionHighlight: false,
+                    codeLens: false,
+                    folding: false,
+                    links: false,
+                    contextmenu: false,
+                    quickSuggestions: false,
+                    parameterHints: { enabled: false },
+                    suggestOnTriggerCharacters: false,
+                    acceptSuggestionOnEnter: 'off',
+                    tabCompletion: 'off',
+                    wordBasedSuggestions: false
+                });
             });
-
-            monaco.editor.defineTheme('byorl-dark', { base: 'vs-dark', inherit: true, rules: [{ background: '050505' }], colors: { 'editor.background': '#050505' } });
-
-            editor = monaco.editor.create(document.getElementById('monaco-container'), {
-                value: 'print("Connected to Byorl Control")',
-                language: 'lua',
-                theme: 'byorl-dark',
-                automaticLayout: true,
-                minimap: { enabled: false },
-                fontSize: 14,
-                fontFamily: "'JetBrains Mono', 'Courier New', monospace",
-                letterSpacing: 0
-            });
-        });
+        }
 
         function setTab(id, btn) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(id).classList.add('active');
             btn.classList.add('active');
-            if(id === 'executor' && editor) setTimeout(() => editor.layout(), 100);
+            if(id === 'executor') {
+                if (!editorLoaded) loadMonacoEditor();
+                if (editor) setTimeout(() => editor.layout(), 100);
+            }
         }
 
-        function getAvatar(id) { return `/avatar/${id}`; }
+        const avatarCache = new Map();
+        const MAX_AVATAR_CACHE = 50;
+        
+        function getAvatar(id) {
+            if (!avatarCache.has(id)) {
+                if (avatarCache.size >= MAX_AVATAR_CACHE) {
+                    const firstKey = avatarCache.keys().next().value;
+                    avatarCache.delete(firstKey);
+                }
+                avatarCache.set(id, `/avatar/${id}`);
+            }
+            return avatarCache.get(id);
+        }
 
+        let updateClientsThrottle = null;
         socket.on('updateClients', (clients) => {
+            if (updateClientsThrottle) return;
+            updateClientsThrottle = setTimeout(() => { updateClientsThrottle = null; }, 500);
+            
+            const currentIds = clients.map(c => c.userId.toString());
+            const oldIds = activeClients.map(c => c.userId.toString());
+            
+            oldIds.forEach(id => {
+                if (!currentIds.includes(id) && remoteSpyData[id]) {
+                    delete remoteSpyData[id];
+                }
+            });
+            
             activeClients = clients;
             renderSessions(clients);
             renderTargets('exec', clients);
@@ -511,41 +581,72 @@
             renderConfig(); 
         });
         
+        const MAX_LOGS = 200;
+        const MAX_LOG_DOM_ELEMENTS = 100;
+        
         socket.on('newLog', (logData) => {
             logs.push(logData);
-            if(logs.length > 500) logs.shift();
+            while(logs.length > MAX_LOGS) logs.shift();
             appendLog(logData);
+            trimLogDOM();
         });
+        
+        function trimLogDOM() {
+            const container = document.getElementById('console-output');
+            while(container.children.length > MAX_LOG_DOM_ELEMENTS) {
+                container.removeChild(container.firstChild);
+            }
+        }
 
+        const MAX_CALLS_PER_REMOTE_CLIENT = 50;
+        const MAX_REMOTES_PER_CLIENT = 100;
+        let spyUpdateThrottle = {};
+        
         socket.on('spyUpdate', (data) => {
             const { userId, direction, remote } = data;
             if (!remoteSpyData[userId]) remoteSpyData[userId] = { Outgoing: {}, Incoming: {} };
             if (!remoteSpyData[userId][direction]) remoteSpyData[userId][direction] = {};
+            
+            const remoteKeys = Object.keys(remoteSpyData[userId][direction]);
+            if (remoteKeys.length >= MAX_REMOTES_PER_CLIENT && !remoteSpyData[userId][direction][remote.path + '_' + direction]) {
+                return;
+            }
+            
             const remoteKey = remote.path + '_' + direction;
             const isNewRemote = !remoteSpyData[userId][direction][remoteKey];
+            
+            if (remote.calls && remote.calls.length > MAX_CALLS_PER_REMOTE_CLIENT) {
+                remote.calls = remote.calls.slice(-MAX_CALLS_PER_REMOTE_CLIENT);
+            }
+            
             remoteSpyData[userId][direction][remoteKey] = remote;
             
             if (spySelectedClient === userId && spyTab === direction) {
-                const existingGroup = Object.values(remoteSpyData[userId][direction]).find(r => r.name === remote.name && r.path !== remote.path);
-                
-                if (isNewRemote && !existingGroup) {
-                    renderRemotesList();
-                } else {
-                    const items = document.querySelectorAll('.remote-item');
-                    items.forEach(item => {
-                        const nameEl = item.querySelector('.remote-name');
-                        if (nameEl && nameEl.textContent === remote.name) {
-                            let totalCalls = 0;
-                            Object.values(remoteSpyData[userId][direction]).forEach(r => {
-                                if (r.name === remote.name) totalCalls += r.calls.length;
+                const throttleKey = `${userId}_${direction}`;
+                if (!spyUpdateThrottle[throttleKey]) {
+                    spyUpdateThrottle[throttleKey] = true;
+                    setTimeout(() => {
+                        spyUpdateThrottle[throttleKey] = false;
+                        if (isNewRemote) {
+                            renderRemotesList();
+                        } else {
+                            const items = document.querySelectorAll('.remote-item');
+                            items.forEach(item => {
+                                const nameEl = item.querySelector('.remote-name');
+                                if (nameEl && nameEl.textContent === remote.name) {
+                                    let totalCalls = 0;
+                                    Object.values(remoteSpyData[userId][direction]).forEach(r => {
+                                        if (r.name === remote.name) totalCalls += r.calls.length;
+                                    });
+                                    const countEl = item.querySelector('.remote-count');
+                                    if (countEl) countEl.textContent = 'x' + totalCalls;
+                                }
                             });
-                            const countEl = item.querySelector('.remote-count');
-                            if (countEl) countEl.textContent = 'x' + totalCalls;
                         }
-                    });
-                }
-                if (spySelectedRemote === remote.name) {
-                    renderCallsList();
+                        if (spySelectedRemote === remote.name) {
+                            renderCallsList();
+                        }
+                    }, 100);
                 }
             }
         });
@@ -567,18 +668,65 @@
             document.getElementById('autotrim-interval').value = settings.autoTrimIntervalSeconds || 60;
         });
 
-        function clearLogs() { logs = []; document.getElementById('console-output').innerHTML = ''; }
+        function clearLogs() { 
+            logs.length = 0;
+            document.getElementById('console-output').innerHTML = ''; 
+        }
+        
+        function cleanupMemory() {
+            const connectedIds = activeClients.map(c => c.userId.toString());
+            
+            Object.keys(remoteSpyData).forEach(id => {
+                if (!connectedIds.includes(id)) {
+                    delete remoteSpyData[id];
+                }
+            });
+            
+            Object.keys(remoteSpyData).forEach(userId => {
+                ['Outgoing', 'Incoming'].forEach(dir => {
+                    if (remoteSpyData[userId][dir]) {
+                        const keys = Object.keys(remoteSpyData[userId][dir]);
+                        if (keys.length > MAX_REMOTES_PER_CLIENT) {
+                            keys.slice(0, keys.length - MAX_REMOTES_PER_CLIENT).forEach(k => {
+                                delete remoteSpyData[userId][dir][k];
+                            });
+                        }
+                        Object.keys(remoteSpyData[userId][dir]).forEach(key => {
+                            const remote = remoteSpyData[userId][dir][key];
+                            if (remote.calls && remote.calls.length > MAX_CALLS_PER_REMOTE_CLIENT) {
+                                remote.calls = remote.calls.slice(-MAX_CALLS_PER_REMOTE_CLIENT);
+                            }
+                        });
+                    }
+                });
+            });
+            
+            expandedCalls.clear();
+            spyUpdateThrottle = {};
+            
+            if (avatarCache.size > MAX_AVATAR_CACHE) {
+                const keysToDelete = Array.from(avatarCache.keys()).slice(0, avatarCache.size - MAX_AVATAR_CACHE);
+                keysToDelete.forEach(k => avatarCache.delete(k));
+            }
+            
+            while (logs.length > MAX_LOGS) logs.shift();
+            trimLogDOM();
+        }
+        
+        setInterval(cleanupMemory, 30000);
         
         function shouldShowLog(l) {
             const showInfo = document.getElementById('chk-info').checked;
             const showWarn = document.getElementById('chk-warn').checked;
             const showError = document.getElementById('chk-error').checked;
+            const searchTerm = (document.getElementById('log-search')?.value || '').toLowerCase();
             const selectedIds = execTargets;
             
             if(selectedIds.length > 0 && !selectedIds.includes(l.userId.toString())) return false;
             if(l.type === 'info' && !showInfo) return false;
             if(l.type === 'warn' && !showWarn) return false;
             if(l.type === 'error' && !showError) return false;
+            if(searchTerm && !l.msg.toLowerCase().includes(searchTerm)) return false;
             return true;
         }
         
@@ -595,13 +743,15 @@
             const entry = document.createElement('div');
             entry.innerHTML = createLogEntry(logData);
             container.appendChild(entry.firstChild);
-            container.scrollTop = container.scrollHeight;
+            const autoScroll = document.getElementById('chk-autoscroll')?.checked;
+            if (autoScroll) container.scrollTop = container.scrollHeight;
         }
 
         function renderLogs() {
             const container = document.getElementById('console-output');
             container.innerHTML = logs.filter(shouldShowLog).map(createLogEntry).join('');
-            container.scrollTop = container.scrollHeight;
+            const autoScroll = document.getElementById('chk-autoscroll')?.checked;
+            if (autoScroll) container.scrollTop = container.scrollHeight;
         }
 
         function escapeHtml(text) {
@@ -610,6 +760,26 @@
             return div.innerHTML;
         }
 
+        function formatUptime(ms) {
+            if (!ms || ms < 0) return '0s';
+            const seconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            if (hours > 0) return `${hours}h ${minutes % 60}m`;
+            if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+            return `${seconds}s`;
+        }
+        
+        function formatAccountAge(days) {
+            if (!days || days < 0) return 'Unknown';
+            const years = Math.floor(days / 365);
+            const remainingDays = days % 365;
+            if (years > 0) {
+                return `${years} year${years > 1 ? 's' : ''}, ${remainingDays} day${remainingDays !== 1 ? 's' : ''}`;
+            }
+            return `${days} day${days !== 1 ? 's' : ''}`;
+        }
+        
         function renderSessions(clients) {
             const grid = document.getElementById('grid');
             const ids = clients.map(c => c.userId.toString());
@@ -618,17 +788,33 @@
                 let card = document.getElementById(`c-${c.userId}`);
                 const pingMs = Math.round((c.ping || 0) * 1000);
                 const ramMb = Math.round(c.ram || 0);
+                const uptimeStr = formatUptime(c.uptime);
+                const connType = c.connectionType === 'websocket' ? 'WS' : 'HTTP';
+                const connColor = c.connectionType === 'websocket' ? 'var(--success)' : 'var(--warn)';
+                const isNew = !card;
                 
-                if(!card) {
-                    card = document.createElement('div'); card.className = 'card'; card.id = `c-${c.userId}`;
+                if(isNew) {
+                    card = document.createElement('div'); 
+                    card.className = 'card'; 
+                    card.id = `c-${c.userId}`;
+                    card.innerHTML = `<div class="status-dot" id="s-${c.userId}"></div><div class="conn-badge" style="position:absolute;top:20px;left:20px;padding:3px 8px;border-radius:4px;font-size:0.65rem;font-weight:600;background:rgba(0,0,0,0.3);color:${connColor}">${connType}</div><img src="${getAvatar(c.userId)}" class="avatar"><div style="font-weight:bold; font-size:1.1rem; margin-bottom:5px;">${c.username}</div><div style="color:#666; font-size:0.8rem; margin-bottom:10px; font-family:'Space Grotesk'">ID: ${c.userId}</div><div style="display:flex; gap:12px; margin-bottom:15px; font-size:0.8rem; flex-wrap:wrap; justify-content:center;"><div style="text-align:center;"><div class="ping-val" style="color:var(--primary); font-weight:600;">${pingMs}ms</div><div style="color:#555; font-size:0.65rem;">PING</div></div><div style="text-align:center;"><div class="ram-val" style="color:var(--success); font-weight:600;">${ramMb}MB</div><div style="color:#555; font-size:0.65rem;">RAM</div></div><div style="text-align:center;"><div class="uptime-val" style="color:var(--info); font-weight:600;">${uptimeStr}</div><div style="color:#555; font-size:0.65rem;">UPTIME</div></div></div><button class="btn btn-danger" onclick="kill('${c.userId}')">Terminate</button>`;
                     grid.appendChild(card);
+                } else {
+                    const pingEl = card.querySelector('.ping-val');
+                    const ramEl = card.querySelector('.ram-val');
+                    const uptimeEl = card.querySelector('.uptime-val');
+                    const connEl = card.querySelector('.conn-badge');
+                    if (pingEl) pingEl.textContent = `${pingMs}ms`;
+                    if (ramEl) ramEl.textContent = `${ramMb}MB`;
+                    if (uptimeEl) uptimeEl.textContent = uptimeStr;
+                    if (connEl) { connEl.textContent = connType; connEl.style.color = connColor; }
                 }
                 
-                card.innerHTML = `<div class="status-dot" id="s-${c.userId}"></div><img src="${getAvatar(c.userId)}" class="avatar"><div style="font-weight:bold; font-size:1.1rem; margin-bottom:5px;">${c.username}</div><div style="color:#666; font-size:0.8rem; margin-bottom:10px; font-family:'Space Grotesk'">ID: ${c.userId}</div><div style="display:flex; gap:15px; margin-bottom:15px; font-size:0.8rem;"><div style="text-align:center;"><div style="color:var(--primary); font-weight:600;">${pingMs}ms</div><div style="color:#555; font-size:0.7rem;">PING</div></div><div style="text-align:center;"><div style="color:var(--success); font-weight:600;">${ramMb}MB</div><div style="color:#555; font-size:0.7rem;">RAM</div></div></div><button class="btn btn-danger" onclick="kill('${c.userId}')">Terminate</button>`;
-                
                 const statusEl = document.getElementById(`s-${c.userId}`);
-                statusEl.className = `status-dot ${c.status === 'unstable' ? 'status-warn' : 'status-good'}`;
-                statusEl.innerText = c.status === 'unstable' ? 'UNSTABLE' : 'ONLINE';
+                if (statusEl) {
+                    statusEl.className = `status-dot ${c.status === 'unstable' ? 'status-warn' : 'status-good'}`;
+                    statusEl.textContent = c.status === 'unstable' ? 'UNSTABLE' : 'ONLINE';
+                }
             });
         }
 
@@ -640,6 +826,8 @@
         }
 
         var accountOrder = [];
+        var selectedAccounts = new Set();
+        var currentGroupFilter = '';
         
         function renderConfig() {
             const list = document.getElementById('config-list');
@@ -651,23 +839,118 @@
                 const d = savedAccounts[uid];
                 if (!d) return;
                 
+                const group = d.group || '';
+                if (currentGroupFilter === 'ungrouped' && group) return;
+                if (currentGroupFilter && currentGroupFilter !== 'ungrouped' && group !== currentGroupFilter) return;
+                
                 const status = getAccountStatus(uid);
+                const isSelected = selectedAccounts.has(uid);
                 const row = document.createElement('div'); 
-                row.className = 'config-row';
+                row.className = 'config-row' + (isSelected ? ' selected' : '');
                 row.setAttribute('data-uid', uid);
-                row.draggable = true;
+                row.draggable = false;
                 
                 const dragIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
+                const groupBadge = group ? '<span style="padding:2px 8px;background:var(--primary-dim);color:var(--primary);border-radius:4px;font-size:0.7rem;font-weight:600;">' + group + '</span>' : '';
+                const cookieHealth = cookieHealthCache[uid];
+                const cookieBadge = cookieHealth ? (cookieHealth.valid ? '<span style="padding:2px 6px;background:rgba(16,185,129,0.15);color:var(--success);border-radius:4px;font-size:0.65rem;font-weight:600;">✓</span>' : '<span style="padding:2px 6px;background:rgba(239,68,68,0.15);color:var(--danger);border-radius:4px;font-size:0.65rem;font-weight:600;">✗</span>') : '';
                 
-                row.innerHTML = '<div class="row-header"><div class="drag-handle">' + dragIcon + '</div><img src="' + getAvatar(uid) + '" style="width:40px; height:40px; border-radius:50%;"><div style="flex:1;"><div style="font-weight:700;">' + (d.username || 'Unknown') + '</div><div style="font-size:0.75rem; color:#666;">' + uid + '</div></div><div class="status-dot ' + status.class + '" style="position:relative;top:0;right:0;">' + status.text + '</div><label class="toggle-label"><input type="checkbox" ' + (d.autoRelaunch?'checked':'') + ' onchange="upd(\'' + uid + '\',\'autoRelaunch\',this.checked)"><span style="font-weight:600; font-size:0.9rem;">Auto-Relaunch</span></label><button class="btn btn-primary" style="width:auto; padding:8px 12px; font-size:0.8rem;" onclick="joinGame(\'' + uid + '\')" title="Launch Roblox with configured Place/Job ID">🎮 Join Game</button><button class="btn btn-danger" style="width:auto; padding:8px 12px; font-size:0.8rem;" onclick="deleteAccount(\'' + uid + '\')">Remove</button></div><div class="row-body"><div><span class="input-label">Place ID</span><input value="' + d.placeId + '" onchange="upd(\'' + uid + '\',\'placeId\',this.value)"></div><div><span class="input-label">Job ID (optional)</span><input value="' + d.jobId + '" onchange="upd(\'' + uid + '\',\'jobId\',this.value)" placeholder="Leave empty for random server"></div><div class="row-full"><span class="input-label">Cookie</span><input type="password" value="' + (d.cookie||'') + '" onchange="upd(\'' + uid + '\',\'cookie\',this.value)"></div></div>';
+                row.innerHTML = '<div class="row-header"><input type="checkbox" class="account-checkbox" ' + (isSelected?'checked':'') + ' onchange="toggleAccountSelection(\'' + uid + '\', this.checked)" style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer;" title="Select for bulk actions"><div class="drag-handle" title="Drag to reorder">' + dragIcon + '</div><img src="' + getAvatar(uid) + '" style="width:40px; height:40px; border-radius:50%;"><div style="flex:1;"><div style="font-weight:700;display:flex;align-items:center;gap:8px;">' + (d.username || 'Unknown') + cookieBadge + '</div><div style="font-size:0.75rem; color:#666;">' + uid + '</div></div><select style="padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.8rem;cursor:pointer;" onchange="upd(\'' + uid + '\',\'group\',this.value);renderConfig();" title="Account Group"><option value=""' + (!group?' selected':'') + '>No Group</option><option value="Main"' + (group==='Main'?' selected':'') + '>Main</option><option value="Alts"' + (group==='Alts'?' selected':'') + '>Alts</option><option value="Farm"' + (group==='Farm'?' selected':'') + '>Farm</option></select><div class="status-dot ' + status.class + '" style="position:relative;top:0;right:0;">' + status.text + '</div><label class="toggle-label"><input type="checkbox" ' + (d.autoRelaunch?'checked':'') + ' onchange="upd(\'' + uid + '\',\'autoRelaunch\',this.checked)"><span style="font-weight:600; font-size:0.9rem;">Auto-Relaunch</span></label><button class="btn btn-ghost" style="width:auto; padding:8px 10px; font-size:0.75rem;" onclick="showAccountHealth(\'' + uid + '\')" title="View account health">ℹ️</button><button class="btn btn-primary" style="width:auto; padding:8px 12px; font-size:0.8rem;" onclick="joinGame(\'' + uid + '\')" title="Launch Roblox">🎮 Join</button><button class="btn btn-danger" style="width:auto; padding:8px 12px; font-size:0.8rem;" onclick="deleteAccount(\'' + uid + '\')">Remove</button></div><div class="row-body"><div><span class="input-label">Place ID</span><input value="' + (d.placeId||'') + '" onchange="upd(\'' + uid + '\',\'placeId\',this.value)"></div><div><span class="input-label">Job ID (optional)</span><input value="' + (d.jobId||'') + '" onchange="upd(\'' + uid + '\',\'jobId\',this.value)" placeholder="Leave empty for random server"></div><div class="row-full"><span class="input-label">Cookie</span><input type="password" value="' + (d.cookie||'') + '" onchange="upd(\'' + uid + '\',\'cookie\',this.value)"></div></div>';
                 
-                row.ondragstart = function(e) { handleDragStart(e, row); };
-                row.ondragend = function(e) { handleDragEnd(e, row); };
                 row.ondragover = function(e) { handleDragOver(e, row); };
                 row.ondragleave = function(e) { handleDragLeave(e, row); };
                 row.ondrop = function(e) { handleDrop(e, row); };
                 
                 list.appendChild(row);
+                
+                const handle = row.querySelector('.drag-handle');
+                if (handle) {
+                    handle.draggable = true;
+                    handle.ondragstart = function(e) { handleDragStart(e, row); };
+                    handle.ondragend = function(e) { handleDragEnd(e, row); };
+                }
+            });
+            
+            updateSelectedCount();
+        }
+        
+        function toggleAccountSelection(uid, checked) {
+            if (checked) selectedAccounts.add(uid);
+            else selectedAccounts.delete(uid);
+            updateSelectedCount();
+        }
+        
+        function toggleSelectAllAccounts() {
+            const allCheckbox = document.getElementById('select-all-accounts');
+            const checkboxes = document.querySelectorAll('.account-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = allCheckbox.checked;
+                const uid = cb.closest('.config-row').getAttribute('data-uid');
+                if (allCheckbox.checked) selectedAccounts.add(uid);
+                else selectedAccounts.delete(uid);
+            });
+            updateSelectedCount();
+        }
+        
+        function updateSelectedCount() {
+            document.getElementById('selected-count').textContent = selectedAccounts.size + ' selected';
+        }
+        
+        function filterByGroup(group, btn) {
+            currentGroupFilter = group;
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            selectedAccounts.clear();
+            document.getElementById('select-all-accounts').checked = false;
+            renderConfig();
+        }
+        
+        function bulkSetGroup() {
+            const group = document.getElementById('bulk-group').value;
+            if (selectedAccounts.size === 0) return showToast('Select accounts first', 'error');
+            selectedAccounts.forEach(uid => {
+                if (savedAccounts[uid]) {
+                    savedAccounts[uid].group = group;
+                    upd(uid, 'group', group);
+                }
+            });
+            showToast('Group updated for ' + selectedAccounts.size + ' account(s)', 'success');
+            renderConfig();
+        }
+        
+        function bulkLaunchSelected() {
+            if (selectedAccounts.size === 0) return showToast('Select accounts first', 'error');
+            let launched = 0;
+            selectedAccounts.forEach(uid => {
+                if (savedAccounts[uid] && savedAccounts[uid].placeId) {
+                    fetch('/launch-game', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: uid })
+                    });
+                    launched++;
+                }
+            });
+            showToast('Launching ' + launched + ' account(s)...', 'success');
+        }
+        
+        function showBulkPlaceModal() {
+            if (selectedAccounts.size === 0) return showToast('Select accounts first', 'error');
+            showModal({
+                title: 'Set Place ID for ' + selectedAccounts.size + ' account(s)',
+                input: 'Enter Place ID...',
+                confirmText: 'Apply',
+                onConfirm: function(placeId) {
+                    if (!placeId) return;
+                    selectedAccounts.forEach(uid => {
+                        if (savedAccounts[uid]) {
+                            savedAccounts[uid].placeId = placeId;
+                            upd(uid, 'placeId', placeId);
+                        }
+                    });
+                    showToast('Place ID set for ' + selectedAccounts.size + ' account(s)', 'success');
+                    renderConfig();
+                }
             });
         }
         
@@ -859,19 +1142,32 @@ print(":: ECO MODE ENABLED ::")`;
         }
         
         let scriptLibrary = {};
+        let currentScriptFilter = '';
+        
+        function filterScripts(category, btn) {
+            currentScriptFilter = category;
+            btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderScriptLibrary();
+        }
         
         function renderScriptLibrary() {
             const container = document.getElementById('script-library');
-            const scripts = Object.entries(scriptLibrary);
+            let scripts = Object.entries(scriptLibrary);
+            
+            if (currentScriptFilter) {
+                scripts = scripts.filter(([id, s]) => s.category === currentScriptFilter);
+            }
             
             if (scripts.length === 0) {
-                container.innerHTML = '<div class="empty-message">No saved scripts</div>';
+                container.innerHTML = '<div class="empty-message">No scripts' + (currentScriptFilter ? ' in ' + currentScriptFilter : '') + '</div>';
                 return;
             }
             
             container.innerHTML = scripts.map(([id, s]) => `
                 <div class="script-item" onclick="loadScript('${id}')">
                     <span class="script-name">${escapeHtml(s.name)}</span>
+                    <span style="font-size:0.6rem;color:var(--text-muted);padding:2px 5px;background:var(--bg);border-radius:3px;">${s.category || 'General'}</span>
                     <div class="script-actions">
                         <button class="script-btn" onclick="event.stopPropagation(); runScript('${id}')" title="Run">▶</button>
                         <button class="script-btn delete" onclick="event.stopPropagation(); deleteScript('${id}')" title="Delete">✕</button>
@@ -885,21 +1181,41 @@ print(":: ECO MODE ENABLED ::")`;
             const code = editor.getValue().trim();
             if (!code) return showToast("Editor is empty!", "error");
             
-            showModal({
-                title: 'Save Script',
-                input: 'Enter script name...',
-                confirmText: 'Save',
-                onConfirm: function(name) {
-                    if (!name) return showToast("Name is required!", "error");
-                    fetch('/scripts/save', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name: name, code: code })
-                    }).then(function(r) { return r.json(); }).then(function(data) {
-                        if (data.error) return showToast(data.error, "error");
-                        showToast("Script saved!", "success");
-                    });
-                }
+            const container = document.getElementById('modal-container');
+            container.innerHTML = `
+                <div class="modal-overlay" id="modal-overlay">
+                    <div class="modal-box">
+                        <div class="modal-title">Save Script</div>
+                        <input type="text" class="modal-input" id="script-name-input" placeholder="Script name...">
+                        <select id="script-category-input" style="width:100%;padding:12px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;margin-bottom:20px;">
+                            <option value="General">General</option>
+                            <option value="Farm">Farm</option>
+                            <option value="Utility">Utility</option>
+                        </select>
+                        <div class="modal-buttons">
+                            <button class="modal-btn ghost" onclick="closeModal()">Cancel</button>
+                            <button class="modal-btn primary" onclick="doSaveScript()">Save</button>
+                        </div>
+                    </div>
+                </div>`;
+            document.getElementById('script-name-input').focus();
+        }
+        
+        function doSaveScript() {
+            const name = document.getElementById('script-name-input').value.trim();
+            const category = document.getElementById('script-category-input').value;
+            const code = editor.getValue().trim();
+            
+            if (!name) return showToast("Name is required!", "error");
+            closeModal();
+            
+            fetch('/scripts/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, code, category })
+            }).then(r => r.json()).then(data => {
+                if (data.error) return showToast(data.error, "error");
+                showToast("Script saved!", "success");
             });
         }
         
@@ -1268,6 +1584,12 @@ print(":: ECO MODE ENABLED ::")`;
         function clearRemoteSpy() {
             if (!spySelectedClient) return;
             fetch(`/spy/clear/${spySelectedClient}`, {method:'POST'});
+            if (remoteSpyData[spySelectedClient]) {
+                remoteSpyData[spySelectedClient] = { Outgoing: {}, Incoming: {} };
+            }
+            expandedCalls.clear();
+            renderRemotesList();
+            renderCallsList();
         }
 
         fetch('/settings').then(r=>r.json()).then(d => {
@@ -1352,6 +1674,130 @@ print(":: ECO MODE ENABLED ::")`;
         }
 
         updateStartupStatus();
+        
+        let cookieHealthCache = {};
+        
+        function checkAllCookies() {
+            const statusEl = document.getElementById('cookie-status');
+            statusEl.textContent = 'Checking cookies...';
+            statusEl.style.color = 'var(--text-muted)';
+            
+            fetch('/check-all-cookies', { method: 'POST' })
+                .then(r => r.json())
+                .then(results => {
+                    cookieHealthCache = results;
+                    const total = Object.keys(results).length;
+                    const valid = Object.values(results).filter(r => r.valid).length;
+                    const invalid = total - valid;
+                    
+                    if (invalid === 0) {
+                        statusEl.textContent = `✓ All ${total} cookies valid`;
+                        statusEl.style.color = 'var(--success)';
+                    } else {
+                        statusEl.textContent = `⚠ ${invalid}/${total} cookies expired`;
+                        statusEl.style.color = 'var(--danger)';
+                    }
+                    
+                    renderConfig();
+                    showToast(`${valid} valid, ${invalid} expired cookies`, invalid > 0 ? 'error' : 'success');
+                })
+                .catch(() => {
+                    statusEl.textContent = 'Check failed';
+                    statusEl.style.color = 'var(--danger)';
+                });
+        }
+        
+        function showAccountHealth(userId) {
+            const acc = savedAccounts[userId];
+            if (!acc) return;
+            
+            const container = document.getElementById('modal-container');
+            container.innerHTML = `
+                <div class="modal-overlay" id="modal-overlay">
+                    <div class="modal-box" style="min-width:400px;">
+                        <div class="modal-title">Account Health: ${acc.username || userId}</div>
+                        <div id="health-content" style="color:var(--text-muted);font-size:0.9rem;">Loading...</div>
+                        <div class="modal-buttons" style="margin-top:20px;">
+                            <button class="modal-btn ghost" onclick="closeModal()">Close</button>
+                        </div>
+                    </div>
+                </div>`;
+            
+            fetch('/account-health/' + userId)
+                .then(r => r.json())
+                .then(data => {
+                    const content = document.getElementById('health-content');
+                    if (!data.valid) {
+                        content.innerHTML = `<div style="color:var(--danger);font-weight:600;">❌ Cookie Invalid</div><div style="margin-top:10px;">${data.error || 'Cookie expired or invalid'}</div>`;
+                        return;
+                    }
+                    
+                    content.innerHTML = `
+                        <div style="display:grid;gap:15px;">
+                            <div style="display:flex;justify-content:space-between;padding:10px;background:var(--bg);border-radius:8px;">
+                                <span>Cookie Status</span>
+                                <span style="color:var(--success);font-weight:600;">✓ Valid</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;padding:10px;background:var(--bg);border-radius:8px;">
+                                <span>Username</span>
+                                <span style="font-weight:600;">${data.username}</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;padding:10px;background:var(--bg);border-radius:8px;">
+                                <span>Display Name</span>
+                                <span style="font-weight:600;">${data.displayName || data.username}</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;padding:10px;background:var(--bg);border-radius:8px;">
+                                <span>Robux</span>
+                                <span style="color:var(--success);font-weight:600;">R$ ${data.robux.toLocaleString()}</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;padding:10px;background:var(--bg);border-radius:8px;">
+                                <span>Account Age</span>
+                                <span style="font-weight:600;">${data.accountAgeDays ? formatAccountAge(data.accountAgeDays) : 'Unknown'}</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;padding:10px;background:var(--bg);border-radius:8px;">
+                                <span>Ban Status</span>
+                                <span style="color:${data.isBanned ? 'var(--danger)' : 'var(--success)'};font-weight:600;">${data.isBanned ? '⚠ Banned' : '✓ Not Banned'}</span>
+                            </div>
+                        </div>`;
+                })
+                .catch(() => {
+                    document.getElementById('health-content').innerHTML = '<div style="color:var(--danger);">Failed to fetch account health</div>';
+                });
+        }
+        
+        function exportConfig() {
+            window.location.href = '/export-config';
+            showToast('Downloading backup...', 'info');
+        }
+        
+        function importConfig(input) {
+            const file = input.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (!data.accounts && !data.settings && !data.scripts) {
+                        return showToast('Invalid backup file', 'error');
+                    }
+                    
+                    fetch('/import-config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    }).then(r => r.json()).then(result => {
+                        if (result.error) return showToast(result.error, 'error');
+                        showToast('Backup imported successfully!', 'success');
+                        setTimeout(() => location.reload(), 1000);
+                    }).catch(() => showToast('Failed to import backup', 'error'));
+                } catch (err) {
+                    showToast('Invalid JSON file', 'error');
+                }
+            };
+            reader.readAsText(file);
+            input.value = '';
+        }
     </script>
 </body>
 </html>
